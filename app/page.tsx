@@ -31,7 +31,7 @@ import {
 type Client = {
   id: string;
   name: string;
-  building_name: string | null;
+  unit_building_name: string | null;
   unit_number: string | null;
   phone: string | null;
   email: string | null;
@@ -71,7 +71,7 @@ const nav = [
 ] as const;
 
 const money = (n: number) =>
-  `₹${(n / 100000).toFixed(1)}L`;
+  `₹${(Number(n || 0) / 100000).toFixed(1)}L`;
 
 function Badge({ children }: { children: string }) {
   const good = [
@@ -113,11 +113,7 @@ function Card({
     <div
       className={`card ${className}`}
       onClick={onClick}
-      style={
-        onClick
-          ? { cursor: 'pointer' }
-          : undefined
-      }
+      style={onClick ? { cursor: 'pointer' } : undefined}
     >
       {children}
     </div>
@@ -146,53 +142,37 @@ function Section({
 }
 
 export default function Home() {
-  const [session, setSession] =
-    useState<any>(null);
+  const [session, setSession] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
-  const [loading, setLoading] =
-    useState(true);
+  const [view, setView] = useState('home');
+  const [mobile, setMobile] = useState(false);
+  const [query, setQuery] = useState('');
 
-  const [view, setView] =
-    useState('home');
+  const [modal, setModal] = useState<
+    'client' | 'project' | null
+  >(null);
 
-  const [mobile, setMobile] =
-    useState(false);
-
-  const [query, setQuery] =
-    useState('');
-
-  const [modal, setModal] =
-    useState<'client' | 'project' | null>(null);
-
-  const [clients, setClients] =
-    useState<Client[]>([]);
-
-  const [projects, setProjects] =
-    useState<Project[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
 
   const [selectedProject, setSelectedProject] =
     useState<Project | null>(null);
 
-  const [error, setError] =
-    useState('');
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    supabase.auth
-      .getSession()
-      .then(({ data }) => {
-        setSession(data.session);
-        setLoading(false);
-      });
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setLoading(false);
+    });
 
     const { data } =
-      supabase.auth.onAuthStateChange(
-        (_event, s) => {
-          setSession(s);
-        }
-      );
+      supabase.auth.onAuthStateChange((_event, s) => {
+        setSession(s);
+      });
 
-    return () =>
-      data.subscription.unsubscribe();
+    return () => data.subscription.unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -243,17 +223,16 @@ export default function Home() {
 
   async function addClient(v: {
     name: string;
-    building_name: string;
+    unit_building_name: string;
     unit_number: string;
     phone: string;
     email: string;
   }) {
-    const { data, error } =
-      await supabase
-        .from('clients')
-        .insert(v)
-        .select('*')
-        .single();
+    const { data, error } = await supabase
+      .from('clients')
+      .insert(v)
+      .select('*')
+      .single();
 
     if (error) throw error;
 
@@ -269,17 +248,16 @@ export default function Home() {
     start_date: string;
     due_date: string;
   }) {
-    const { data, error } =
-      await supabase
-        .from('projects')
-        .insert({
-          ...v,
-          actual_cost: 0,
-          progress: 0,
-          status: 'On Track'
-        })
-        .select('*')
-        .single();
+    const { data, error } = await supabase
+      .from('projects')
+      .insert({
+        ...v,
+        actual_cost: 0,
+        progress: 0,
+        status: 'On Track'
+      })
+      .select('*')
+      .single();
 
     if (error) throw error;
 
@@ -313,9 +291,7 @@ export default function Home() {
   }
 
   if (!session) {
-    if (
-      typeof window !== 'undefined'
-    ) {
+    if (typeof window !== 'undefined') {
       window.location.replace('/login');
     }
 
@@ -329,48 +305,33 @@ export default function Home() {
   return (
     <div className="app">
 
+      {/* SIDEBAR */}
+
       <aside
         className={`sidebar ${
           mobile ? 'show' : ''
         }`}
       >
-
         <div className="brand">
-
-          <div className="mark">
-            S
-          </div>
+          <div className="mark">S</div>
 
           <div>
             <b>solusi</b>
-            <small>
-              OPERATING SYSTEM
-            </small>
+            <small>OPERATING SYSTEM</small>
           </div>
 
           <button
             className="mobileClose"
-            onClick={() =>
-              setMobile(false)
-            }
+            onClick={() => setMobile(false)}
           >
             <X size={18} />
           </button>
-
         </div>
 
         <div className="workspace">
-          <small>
-            WORKSPACE
-          </small>
-
-          <b>
-            Solusi Design
-          </b>
-
-          <span>
-            Commercial Interiors
-          </span>
+          <small>WORKSPACE</small>
+          <b>Solusi Design</b>
+          <span>Commercial Interiors</span>
         </div>
 
         <nav>
@@ -390,25 +351,19 @@ export default function Home() {
                 }}
               >
                 <Icon size={16} />
-                <span>
-                  {label}
-                </span>
+                <span>{label}</span>
               </button>
             )
           )}
         </nav>
 
         <div className="user">
-
-          <div className="avatar">
-            SH
-          </div>
+          <div className="avatar">SH</div>
 
           <div>
             <b>
-              {session.user.email?.split(
-                '@'
-              )[0] || 'Owner'}
+              {session.user.email?.split('@')[0] ||
+                'Owner'}
             </b>
 
             <small>
@@ -423,22 +378,19 @@ export default function Home() {
           >
             <LogOut size={14} />
           </button>
-
         </div>
-
       </aside>
+
+      {/* MAIN */}
 
       <main>
 
         <header>
-
           <div className="headerTitle">
 
             <button
               className="hamb"
-              onClick={() =>
-                setMobile(true)
-              }
+              onClick={() => setMobile(true)}
             >
               <Menu size={20} />
             </button>
@@ -448,28 +400,21 @@ export default function Home() {
               {activeLabel.toUpperCase()}
             </div>
 
-            <h1>
-              {activeLabel}
-            </h1>
-
+            <h1>{activeLabel}</h1>
           </div>
 
           <div className="headerTools">
 
             <div className="search">
-
               <Search size={15} />
 
               <input
                 value={query}
                 onChange={e =>
-                  setQuery(
-                    e.target.value
-                  )
+                  setQuery(e.target.value)
                 }
                 placeholder="Search clients, projects…"
               />
-
             </div>
 
             <button className="iconBtn">
@@ -492,16 +437,13 @@ export default function Home() {
                 Create
               </button>
             )}
-
           </div>
-
         </header>
 
         <section className="page">
 
           {error && (
             <div className="authError pageAlert">
-
               {error}
 
               <button
@@ -511,7 +453,6 @@ export default function Home() {
                 <RefreshCw size={12} />
                 Retry
               </button>
-
             </div>
           )}
 
@@ -544,9 +485,7 @@ export default function Home() {
                 onAdd={() =>
                   setModal('project')
                 }
-                onOpen={
-                  setSelectedProject
-                }
+                onOpen={setSelectedProject}
               />
 
             )
@@ -570,14 +509,13 @@ export default function Home() {
           )}
 
         </section>
-
       </main>
+
+      {/* MODALS */}
 
       {modal === 'client' && (
         <ClientModal
-          close={() =>
-            setModal(null)
-          }
+          close={() => setModal(null)}
           save={addClient}
         />
       )}
@@ -585,9 +523,7 @@ export default function Home() {
       {modal === 'project' && (
         <ProjectModal
           clients={clients}
-          close={() =>
-            setModal(null)
-          }
+          close={() => setModal(null)}
           save={addProject}
         />
       )}
@@ -595,6 +531,11 @@ export default function Home() {
     </div>
   );
 }
+
+
+/* =========================================================
+   DASHBOARD
+========================================================= */
 
 function Dashboard({
   projects,
@@ -610,7 +551,6 @@ function Dashboard({
 }) {
   return (
     <>
-
       <div className="welcome">
 
         <div>
@@ -625,9 +565,8 @@ function Dashboard({
         </div>
 
         <span className="date">
-          Live data • {projects.length}{' '}
-          projects • {clients.length}{' '}
-          clients
+          Live data • {projects.length} projects •{' '}
+          {clients.length} clients
         </span>
 
       </div>
@@ -700,15 +639,10 @@ function Dashboard({
                 >
 
                   <div className="projectTop">
-
-                    <b>
-                      {p.name}
-                    </b>
-
+                    <b>{p.name}</b>
                     <Badge>
                       {p.status}
                     </Badge>
-
                   </div>
 
                   <small>
@@ -716,18 +650,15 @@ function Dashboard({
                       p.client_id,
                       clients
                     )}{' '}
-                    • {p.progress}%
-                    complete
+                    • {p.progress}% complete
                   </small>
 
                   <div className="bar">
-
                     <i
                       style={{
                         width: `${p.progress}%`
                       }}
                     />
-
                   </div>
 
                   <div className="projectFoot">
@@ -736,8 +667,7 @@ function Dashboard({
                       Budget{' '}
                       {money(
                         Number(
-                          p.approved_budget ||
-                            0
+                          p.approved_budget || 0
                         )
                       )}
                     </span>
@@ -745,13 +675,11 @@ function Dashboard({
                     <b>
                       {money(
                         Number(
-                          p.contract_value ||
-                            0
+                          p.contract_value || 0
                         ) -
-                          Number(
-                            p.actual_cost ||
-                              0
-                          )
+                        Number(
+                          p.actual_cost || 0
+                        )
                       )}{' '}
                       GP
                     </b>
@@ -776,7 +704,6 @@ function Dashboard({
           <div className="list">
 
             <div className="listItem">
-
               <UserPlus size={14} />
 
               <div>
@@ -785,14 +712,10 @@ function Dashboard({
                   CRUD + search-ready
                 </small>
               </div>
-
             </div>
 
             <div className="listItem">
-
-              <BriefcaseBusiness
-                size={14}
-              />
+              <BriefcaseBusiness size={14} />
 
               <div>
                 <b>Projects</b>
@@ -800,23 +723,17 @@ function Dashboard({
                   Linked to clients
                 </small>
               </div>
-
             </div>
 
             <div className="listItem">
-
               <ShieldDot />
 
               <div>
-                <b>
-                  Authentication
-                </b>
-
+                <b>Authentication</b>
                 <small>
                   Supabase session
                 </small>
               </div>
-
             </div>
 
           </div>
@@ -824,10 +741,14 @@ function Dashboard({
         </Card>
 
       </div>
-
     </>
   );
 }
+
+
+/* =========================================================
+   CLIENT HELPERS
+========================================================= */
 
 function clientNameLocal(
   id: string | null,
@@ -841,26 +762,25 @@ function clientNameLocal(
     return 'Unassigned';
   }
 
-  const building =
-    c.building_name?.trim() || '';
-
-  const unit =
-    c.unit_number?.trim() || '';
-
-  if (building && unit) {
-    return `${building} • Unit ${unit}`;
+  if (
+    c.unit_building_name &&
+    c.unit_number
+  ) {
+    return `${c.unit_building_name} • ${c.unit_number}`;
   }
 
-  if (building) {
-    return building;
-  }
-
-  if (unit) {
-    return `Unit ${unit}`;
-  }
-
-  return c.name || 'Unassigned';
+  return (
+    c.unit_building_name ||
+    c.unit_number ||
+    c.name ||
+    'Unassigned'
+  );
 }
+
+
+/* =========================================================
+   KPI
+========================================================= */
 
 function Kpi({
   title,
@@ -879,22 +799,18 @@ function Kpi({
     <Card className="kpi">
 
       <div className="kpiTop">
-        <span>
-          {title}
-        </span>
+        <span>{title}</span>
       </div>
 
-      <strong>
-        {value}
-      </strong>
+      <strong>{value}</strong>
 
       <small
         className={
           good
             ? 'goodText'
             : bad
-              ? 'badText'
-              : ''
+            ? 'badText'
+            : ''
         }
       >
         {note}
@@ -903,6 +819,11 @@ function Kpi({
     </Card>
   );
 }
+
+
+/* =========================================================
+   CLIENTS
+========================================================= */
 
 function Clients({
   clients,
@@ -915,15 +836,13 @@ function Clients({
 }) {
 
   const list = clients.filter(c =>
-    `${c.name} ${
-      c.building_name || ''
-    } ${
-      c.unit_number || ''
-    } ${
-      c.phone || ''
-    } ${
-      c.email || ''
-    }`
+    `
+      ${c.name}
+      ${c.unit_building_name || ''}
+      ${c.unit_number || ''}
+      ${c.email || ''}
+      ${c.phone || ''}
+    `
       .toLowerCase()
       .includes(
         query.toLowerCase()
@@ -932,7 +851,6 @@ function Clients({
 
   return (
     <>
-
       <Top
         title="Clients"
         sub="Your client master — one record feeding every project."
@@ -951,29 +869,30 @@ function Clients({
 
         <Table
           headers={[
-            'Contact',
-            'Building / Unit',
+            'Client',
+            'Unit Building',
             'Unit Number',
             'Phone',
-            'Email',
-            'Projects'
+            'Email'
           ]}
           rows={list.map(c => [
+
             <b key="name">
               {c.name}
             </b>,
 
-            c.building_name || '—',
+            c.unit_building_name ||
+              '—',
 
-            c.unit_number
-              ? `Unit ${c.unit_number}`
-              : '—',
+            c.unit_number ||
+              '—',
 
-            c.phone || '—',
+            c.phone ||
+              '—',
 
-            c.email || '—',
+            c.email ||
+              '—'
 
-            'Linked from Projects'
           ])}
         />
 
@@ -984,10 +903,14 @@ function Clients({
         )}
 
       </Card>
-
     </>
   );
 }
+
+
+/* =========================================================
+   PROJECTS
+========================================================= */
 
 function Projects({
   projects,
@@ -1004,12 +927,13 @@ function Projects({
 }) {
 
   const list = projects.filter(p =>
-    `${p.name} ${
-      clientNameLocal(
+    `
+      ${p.name}
+      ${clientNameLocal(
         p.client_id,
         clients
-      )
-    }`
+      )}
+    `
       .toLowerCase()
       .includes(
         query.toLowerCase()
@@ -1018,7 +942,6 @@ function Projects({
 
   return (
     <>
-
       <Top
         title="Projects"
         sub="Live project records connected to your client master."
@@ -1047,10 +970,7 @@ function Projects({
             <div className="sectionHead">
 
               <div>
-
-                <h3>
-                  {p.name}
-                </h3>
+                <h3>{p.name}</h3>
 
                 <span>
                   {clientNameLocal(
@@ -1058,7 +978,6 @@ function Projects({
                     clients
                   )}
                 </span>
-
               </div>
 
               <Badge>
@@ -1068,13 +987,11 @@ function Projects({
             </div>
 
             <div className="bar bigbar">
-
               <i
                 style={{
                   width: `${p.progress}%`
                 }}
               />
-
             </div>
 
             <div className="projectFoot">
@@ -1086,13 +1003,11 @@ function Projects({
               <b>
                 {money(
                   Number(
-                    p.contract_value ||
-                      0
+                    p.contract_value || 0
                   ) -
-                    Number(
-                      p.actual_cost ||
-                        0
-                    )
+                  Number(
+                    p.actual_cost || 0
+                  )
                 )}{' '}
                 GP
               </b>
@@ -1109,8 +1024,7 @@ function Projects({
                 <b>
                   {money(
                     Number(
-                      p.contract_value ||
-                        0
+                      p.contract_value || 0
                     )
                   )}
                 </b>
@@ -1124,8 +1038,7 @@ function Projects({
                 <b>
                   {money(
                     Number(
-                      p.approved_budget ||
-                        0
+                      p.approved_budget || 0
                     )
                   )}
                 </b>
@@ -1134,9 +1047,7 @@ function Projects({
             </div>
 
             <small>
-              Due{' '}
-              {p.due_date ||
-                'TBD'}
+              Due {p.due_date || 'TBD'}
             </small>
 
           </Card>
@@ -1150,10 +1061,14 @@ function Projects({
         )}
 
       </div>
-
     </>
   );
 }
+
+
+/* =========================================================
+   PROJECT DETAIL
+========================================================= */
 
 function ProjectDetail({
   project,
@@ -1165,26 +1080,38 @@ function ProjectDetail({
   onBack: () => void;
 }) {
 
-  const client =
-    clientNameLocal(
-      project.client_id,
-      clients
-    );
+  const client = clients.find(
+    c => c.id === project.client_id
+  );
 
   const gp =
-    Number(
-      project.contract_value || 0
-    ) -
-    Number(
-      project.actual_cost || 0
-    );
+    Number(project.contract_value || 0) -
+    Number(project.actual_cost || 0);
+
+  const margin =
+    Number(project.contract_value || 0) > 0
+      ? (gp /
+          Number(project.contract_value)) *
+        100
+      : 0;
 
   return (
     <>
-
       <Top
         title={project.name}
-        sub={client}
+        sub={
+          client
+            ? `${client.name}${
+                client.unit_building_name
+                  ? ` • ${client.unit_building_name}`
+                  : ''
+              }${
+                client.unit_number
+                  ? ` • ${client.unit_number}`
+                  : ''
+              }`
+            : 'Unassigned client'
+        }
         action={
           <button
             className="secondary"
@@ -1195,36 +1122,104 @@ function ProjectDetail({
         }
       />
 
-      <div className="threeCols">
+      {/* PROJECT HEADER */}
 
-        <Card>
+      <Card className="hero">
 
-          <small>Status</small>
+        <div className="sectionHead">
 
-          <h3>
+          <div>
+            <h3>
+              Project Overview
+            </h3>
+
+            <span>
+              Core project operating information
+            </span>
+          </div>
+
+          <Badge>
             {project.status}
-          </h3>
+          </Badge>
 
-          <small>
-            Progress
-          </small>
+        </div>
+
+        <div className="miniStats">
+
+          <div>
+            <small>
+              Client
+            </small>
+
+            <b>
+              {client?.name ||
+                'Unassigned'}
+            </b>
+          </div>
+
+          <div>
+            <small>
+              Building
+            </small>
+
+            <b>
+              {client?.unit_building_name ||
+                '—'}
+            </b>
+          </div>
+
+          <div>
+            <small>
+              Unit
+            </small>
+
+            <b>
+              {client?.unit_number ||
+                '—'}
+            </b>
+          </div>
+
+        </div>
+
+        <div
+          style={{
+            marginTop: 24
+          }}
+        >
+
+          <div
+            style={{
+              display: 'flex',
+              justifyContent:
+                'space-between',
+              marginBottom: 8
+            }}
+          >
+            <small>
+              Project Progress
+            </small>
+
+            <b>
+              {project.progress}%
+            </b>
+          </div>
 
           <div className="bar bigbar">
-
             <i
               style={{
                 width: `${project.progress}%`
               }}
             />
-
           </div>
 
-          <b>
-            {project.progress}%
-            complete
-          </b>
+        </div>
 
-        </Card>
+      </Card>
+
+
+      {/* FINANCIAL SUMMARY */}
+
+      <div className="threeCols">
 
         <Card>
 
@@ -1235,24 +1230,34 @@ function ProjectDetail({
           <h2>
             {money(
               Number(
-                project.contract_value ||
-                  0
+                project.contract_value || 0
               )
             )}
           </h2>
 
           <small>
+            Total project revenue
+          </small>
+
+        </Card>
+
+        <Card>
+
+          <small>
             Approved Budget
           </small>
 
-          <h3>
+          <h2>
             {money(
               Number(
-                project.approved_budget ||
-                  0
+                project.approved_budget || 0
               )
             )}
-          </h3>
+          </h2>
+
+          <small>
+            Planned project cost
+          </small>
 
         </Card>
 
@@ -1265,77 +1270,94 @@ function ProjectDetail({
           <h2>
             {money(
               Number(
-                project.actual_cost ||
-                  0
+                project.actual_cost || 0
               )
             )}
           </h2>
 
           <small>
-            Gross Profit
+            Recorded cost to date
           </small>
-
-          <h3>
-            {money(gp)}
-          </h3>
 
         </Card>
 
       </div>
 
+
+      {/* PROFITABILITY */}
+
+      <div className="threeCols">
+
+        <Card>
+
+          <small>
+            Gross Profit
+          </small>
+
+          <h2>
+            {money(gp)}
+          </h2>
+
+          <small className="goodText">
+            Contract value − actual cost
+          </small>
+
+        </Card>
+
+        <Card>
+
+          <small>
+            Gross Margin
+          </small>
+
+          <h2>
+            {margin.toFixed(1)}%
+          </h2>
+
+          <small>
+            Current project margin
+          </small>
+
+        </Card>
+
+        <Card>
+
+          <small>
+            Budget Remaining
+          </small>
+
+          <h2>
+            {money(
+              Number(
+                project.approved_budget || 0
+              ) -
+              Number(
+                project.actual_cost || 0
+              )
+            )}
+          </h2>
+
+          <small>
+            Approved budget − actual cost
+          </small>
+
+        </Card>
+
+      </div>
+
+
+      {/* DATES */}
+
       <Card className="hero">
 
-        <div className="sectionHead">
-
-          <div>
-
-            <h3>
-              Project Overview
-            </h3>
-
-            <span>
-              Core project information
-            </span>
-
-          </div>
-
-          <Badge>
-            {project.status}
-          </Badge>
-
-        </div>
+        <Section
+          title="Project Timeline"
+          sub="Current project schedule"
+        />
 
         <div className="miniStats">
 
           <div>
-
-            <small>
-              Client
-            </small>
-
-            <b>
-              {client}
-            </b>
-
-          </div>
-
-          <div>
-
-            <small>
-              Contact
-            </small>
-
-            <b>
-              {getClientName(
-                project.client_id,
-                clients
-              )}
-            </b>
-
-          </div>
-
-          <div>
-
             <small>
               Start Date
             </small>
@@ -1344,11 +1366,9 @@ function ProjectDetail({
               {project.start_date ||
                 'TBD'}
             </b>
-
           </div>
 
           <div>
-
             <small>
               Due Date
             </small>
@@ -1357,7 +1377,67 @@ function ProjectDetail({
               {project.due_date ||
                 'TBD'}
             </b>
+          </div>
 
+          <div>
+            <small>
+              Status
+            </small>
+
+            <b>
+              {project.status}
+            </b>
+          </div>
+
+        </div>
+
+      </Card>
+
+
+      {/* NEXT MODULE PLACEHOLDER */}
+
+      <Card className="hero">
+
+        <Section
+          title="Project Operations"
+          sub="Operational modules will connect here"
+        />
+
+        <div className="heroMetrics">
+
+          <div>
+            <b>01</b>
+            <small>
+              Tasks & SOP
+            </small>
+          </div>
+
+          <div>
+            <b>02</b>
+            <small>
+              Site Control
+            </small>
+          </div>
+
+          <div>
+            <b>03</b>
+            <small>
+              Labour
+            </small>
+          </div>
+
+          <div>
+            <b>04</b>
+            <small>
+              Procurement
+            </small>
+          </div>
+
+          <div>
+            <b>05</b>
+            <small>
+              Finance
+            </small>
           </div>
 
         </div>
@@ -1368,17 +1448,10 @@ function ProjectDetail({
   );
 }
 
-function getClientName(
-  id: string | null,
-  clients: Client[]
-) {
-  return (
-    clients.find(
-      c => c.id === id
-    )?.name ||
-    'Unassigned'
-  );
-}
+
+/* =========================================================
+   PLACEHOLDER
+========================================================= */
 
 function Placeholder({
   title
@@ -1387,7 +1460,6 @@ function Placeholder({
 }) {
   return (
     <>
-
       <Top
         title={title}
         sub="The navigation is in place. This module will be connected to the same project data layer next."
@@ -1400,10 +1472,10 @@ function Placeholder({
         </h2>
 
         <p>
-          We are building this module
-          on top of the live Clients +
-          Projects foundation instead
-          of demo-only state.
+          We are building this module on top
+          of the live Clients + Projects
+          foundation instead of demo-only
+          state.
         </p>
 
         <div className="heroMetrics">
@@ -1432,10 +1504,14 @@ function Placeholder({
         </div>
 
       </Card>
-
     </>
   );
 }
+
+
+/* =========================================================
+   TOP
+========================================================= */
 
 function Top({
   title,
@@ -1450,15 +1526,8 @@ function Top({
     <div className="topLine">
 
       <div>
-
-        <h2>
-          {title}
-        </h2>
-
-        <p>
-          {sub}
-        </p>
-
+        <h2>{title}</h2>
+        <p>{sub}</p>
       </div>
 
       {action}
@@ -1466,6 +1535,11 @@ function Top({
     </div>
   );
 }
+
+
+/* =========================================================
+   TABLE
+========================================================= */
 
 function Table({
   headers,
@@ -1480,17 +1554,13 @@ function Table({
       <table>
 
         <thead>
-
           <tr>
-
             {headers.map(h => (
               <th key={h}>
                 {h}
               </th>
             ))}
-
           </tr>
-
         </thead>
 
         <tbody>
@@ -1517,6 +1587,11 @@ function Table({
   );
 }
 
+
+/* =========================================================
+   EMPTY
+========================================================= */
+
 function Empty({
   text
 }: {
@@ -1528,6 +1603,11 @@ function Empty({
     </div>
   );
 }
+
+
+/* =========================================================
+   SHIELD
+========================================================= */
 
 function ShieldDot() {
   return (
@@ -1542,29 +1622,32 @@ function ShieldDot() {
   );
 }
 
+
+/* =========================================================
+   CLIENT MODAL
+========================================================= */
+
 function ClientModal({
   close,
   save
 }: {
   close: () => void;
-
   save: (v: {
     name: string;
-    building_name: string;
+    unit_building_name: string;
     unit_number: string;
     phone: string;
     email: string;
   }) => Promise<void>;
 }) {
 
-  const [v, setV] =
-    useState({
-      name: '',
-      building_name: '',
-      unit_number: '',
-      phone: '',
-      email: ''
-    });
+  const [v, setV] = useState({
+    name: '',
+    unit_building_name: '',
+    unit_number: '',
+    phone: '',
+    email: ''
+  });
 
   const [busy, setBusy] =
     useState(false);
@@ -1580,9 +1663,9 @@ function ClientModal({
       error={error}
       onSave={async () => {
 
-        if (!v.name.trim()) {
+        if (!v.name) {
           setError(
-            'Contact name is required.'
+            'Client name is required.'
           );
           return;
         }
@@ -1590,27 +1673,21 @@ function ClientModal({
         setBusy(true);
 
         try {
-
           await save(v);
-
         } catch (e: any) {
-
           setError(
             e.message ||
               'Unable to save client.'
           );
-
         } finally {
-
           setBusy(false);
-
         }
 
       }}
     >
 
       <Field
-        label="Contact name"
+        label="Client name"
         value={v.name}
         onChange={x =>
           setV({
@@ -1622,15 +1699,17 @@ function ClientModal({
       />
 
       <Field
-        label="Building / Unit Name"
-        value={v.building_name}
+        label="Unit Building Name"
+        value={
+          v.unit_building_name
+        }
         onChange={x =>
           setV({
             ...v,
-            building_name: x
+            unit_building_name: x
           })
         }
-        placeholder="e.g. ATS Bouquet"
+        placeholder="e.g. EON Fairfox"
       />
 
       <Field
@@ -1642,7 +1721,7 @@ function ClientModal({
             unit_number: x
           })
         }
-        placeholder="e.g. 1403"
+        placeholder="e.g. 1914"
       />
 
       <Field
@@ -1666,12 +1745,17 @@ function ClientModal({
             email: x
           })
         }
-        placeholder="client@company.com"
+        placeholder="client@example.com"
       />
 
     </Modal>
   );
 }
+
+
+/* =========================================================
+   PROJECT MODAL
+========================================================= */
 
 function ProjectModal({
   clients,
@@ -1680,7 +1764,6 @@ function ProjectModal({
 }: {
   clients: Client[];
   close: () => void;
-
   save: (v: {
     name: string;
     client_id: string;
@@ -1691,16 +1774,15 @@ function ProjectModal({
   }) => Promise<void>;
 }) {
 
-  const [v, setV] =
-    useState({
-      name: '',
-      client_id:
-        clients[0]?.id || '',
-      contract_value: '',
-      approved_budget: '',
-      start_date: '',
-      due_date: ''
-    });
+  const [v, setV] = useState({
+    name: '',
+    client_id:
+      clients[0]?.id || '',
+    contract_value: '',
+    approved_budget: '',
+    start_date: '',
+    due_date: ''
+  });
 
   const [busy, setBusy] =
     useState(false);
@@ -1717,7 +1799,7 @@ function ProjectModal({
       onSave={async () => {
 
         if (
-          !v.name.trim() ||
+          !v.name ||
           !v.client_id
         ) {
           setError(
@@ -1732,8 +1814,7 @@ function ProjectModal({
 
           await save({
             name: v.name,
-            client_id:
-              v.client_id,
+            client_id: v.client_id,
             contract_value:
               Number(
                 v.contract_value || 0
@@ -1777,7 +1858,6 @@ function ProjectModal({
       />
 
       <label>
-
         Client
 
         <select
@@ -1797,14 +1877,13 @@ function ProjectModal({
               key={c.id}
               value={c.id}
             >
-
-              {c.building_name ||
-                c.name}
-
-              {c.unit_number
-                ? ` • Unit ${c.unit_number}`
+              {c.name}
+              {c.unit_building_name
+                ? ` • ${c.unit_building_name}`
                 : ''}
-
+              {c.unit_number
+                ? ` • ${c.unit_number}`
+                : ''}
             </option>
 
           ))}
@@ -1815,7 +1894,9 @@ function ProjectModal({
 
       <Field
         label="Contract value"
-        value={v.contract_value}
+        value={
+          v.contract_value
+        }
         onChange={x =>
           setV({
             ...v,
@@ -1828,7 +1909,9 @@ function ProjectModal({
 
       <Field
         label="Approved budget"
-        value={v.approved_budget}
+        value={
+          v.approved_budget
+        }
         onChange={x =>
           setV({
             ...v,
@@ -1871,6 +1954,11 @@ function ProjectModal({
   );
 }
 
+
+/* =========================================================
+   FIELD
+========================================================= */
+
 function Field({
   label,
   value,
@@ -1880,7 +1968,9 @@ function Field({
 }: {
   label: string;
   value: string;
-  onChange: (x: string) => void;
+  onChange: (
+    x: string
+  ) => void;
   placeholder?: string;
   type?: string;
 }) {
@@ -1897,12 +1987,19 @@ function Field({
             e.target.value
           )
         }
-        placeholder={placeholder}
+        placeholder={
+          placeholder
+        }
       />
 
     </label>
   );
 }
+
+
+/* =========================================================
+   MODAL
+========================================================= */
 
 function Modal({
   title,
@@ -1934,7 +2031,6 @@ function Modal({
         <div className="modalHead">
 
           <div>
-
             <small>
               SOLUSI OS
             </small>
@@ -1942,7 +2038,6 @@ function Modal({
             <h2>
               {title}
             </h2>
-
           </div>
 
           <button
