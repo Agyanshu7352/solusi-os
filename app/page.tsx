@@ -25,7 +25,9 @@ import {
   X,
   LogOut,
   UserPlus,
-  RefreshCw
+  RefreshCw,
+  CalendarDays,
+  UserRound
 } from 'lucide-react';
 
 type Client = {
@@ -50,6 +52,21 @@ type Project = {
   due_date: string | null;
 };
 
+type Milestone = {
+  id: string;
+  project_id: string;
+  phase: string;
+  name: string;
+  planned_start: string | null;
+  planned_finish: string | null;
+  actual_finish: string | null;
+  status: string;
+  progress: number;
+  responsible_person: string | null;
+  notes: string | null;
+  sort_order: number;
+};
+
 const nav = [
   ['Command Center', LayoutDashboard, 'home'],
   ['Sales & CRM', Users, 'sales'],
@@ -70,8 +87,26 @@ const nav = [
   ['Client Portal', ExternalLink, 'portal']
 ] as const;
 
+const phases = [
+  'Pre-Execution',
+  'Design',
+  'Procurement',
+  'Civil & MEP',
+  'Furniture & Interiors',
+  'Finalisation',
+  'Commercial Closure'
+];
+
+const milestoneStatuses = [
+  'Pending',
+  'In Progress',
+  'Done',
+  'Delayed',
+  'On Hold'
+];
+
 const money = (n: number) =>
-  `₹${(Number(n || 0) / 100000).toFixed(1)}L`;
+  `₹${(n / 100000).toFixed(1)}L`;
 
 function Badge({ children }: { children: string }) {
   const good = [
@@ -113,7 +148,11 @@ function Card({
     <div
       className={`card ${className}`}
       onClick={onClick}
-      style={onClick ? { cursor: 'pointer' } : undefined}
+      style={
+        onClick
+          ? { cursor: 'pointer' }
+          : undefined
+      }
     >
       {children}
     </div>
@@ -135,7 +174,6 @@ function Section({
         <h3>{title}</h3>
         {sub && <span>{sub}</span>}
       </div>
-
       {action}
     </div>
   );
@@ -150,7 +188,7 @@ export default function Home() {
   const [query, setQuery] = useState('');
 
   const [modal, setModal] = useState<
-    'client' | 'project' | null
+    'client' | 'project' | 'milestone' | null
   >(null);
 
   const [clients, setClients] = useState<Client[]>([]);
@@ -158,6 +196,9 @@ export default function Home() {
 
   const [selectedProject, setSelectedProject] =
     useState<Project | null>(null);
+
+  const [milestones, setMilestones] =
+    useState<Milestone[]>([]);
 
   const [error, setError] = useState('');
 
@@ -168,11 +209,14 @@ export default function Home() {
     });
 
     const { data } =
-      supabase.auth.onAuthStateChange((_event, s) => {
-        setSession(s);
-      });
+      supabase.auth.onAuthStateChange(
+        (_event, s) => {
+          setSession(s);
+        }
+      );
 
-    return () => data.subscription.unsubscribe();
+    return () =>
+      data.subscription.unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -216,6 +260,30 @@ export default function Home() {
     setProjects(p || []);
   }
 
+  async function loadMilestones(
+    projectId: string
+  ) {
+    setError('');
+
+    const { data, error } = await supabase
+      .from('project_milestones')
+      .select('*')
+      .eq('project_id', projectId)
+      .order('sort_order', {
+        ascending: true
+      })
+      .order('created_at', {
+        ascending: true
+      });
+
+    if (error) {
+      setError(error.message);
+      return;
+    }
+
+    setMilestones(data || []);
+  }
+
   async function signOut() {
     await supabase.auth.signOut();
     window.location.href = '/login';
@@ -228,11 +296,12 @@ export default function Home() {
     phone: string;
     email: string;
   }) {
-    const { data, error } = await supabase
-      .from('clients')
-      .insert(v)
-      .select('*')
-      .single();
+    const { data, error } =
+      await supabase
+        .from('clients')
+        .insert(v)
+        .select('*')
+        .single();
 
     if (error) throw error;
 
@@ -248,16 +317,17 @@ export default function Home() {
     start_date: string;
     due_date: string;
   }) {
-    const { data, error } = await supabase
-      .from('projects')
-      .insert({
-        ...v,
-        actual_cost: 0,
-        progress: 0,
-        status: 'On Track'
-      })
-      .select('*')
-      .single();
+    const { data, error } =
+      await supabase
+        .from('projects')
+        .insert({
+          ...v,
+          actual_cost: 0,
+          progress: 0,
+          status: 'On Track'
+        })
+        .select('*')
+        .single();
 
     if (error) throw error;
 
@@ -265,17 +335,110 @@ export default function Home() {
     setModal(null);
   }
 
+  async function addMilestone(v: {
+    project_id: string;
+    phase: string;
+    name: string;
+    planned_start: string;
+    planned_finish: string;
+    status: string;
+    progress: number;
+    responsible_person: string;
+    notes: string;
+  }) {
+    const nextOrder =
+      milestones.length > 0
+        ? Math.max(
+            ...milestones.map(
+              m => Number(m.sort_order) || 0
+            )
+          ) + 1
+        : 0;
+
+    const { data, error } =
+      await supabase
+        .from('project_milestones')
+        .insert({
+          ...v,
+          actual_finish: null,
+          sort_order: nextOrder
+        })
+        .select('*')
+        .single();
+
+    if (error) throw error;
+
+    setMilestones(x => [...x, data]);
+    setModal(null);
+  }
+
+  async function updateMilestone(
+    id: string,
+    updates: Partial<Milestone>
+  ) {
+    setError('');
+
+    const { data, error } =
+      await supabase
+        .from('project_milestones')
+        .update(updates)
+        .eq('id', id)
+        .select('*')
+        .single();
+
+    if (error) {
+      setError(error.message);
+      return;
+    }
+
+    setMilestones(x =>
+      x.map(m =>
+        m.id === id ? data : m
+      )
+    );
+  }
+
+  async function deleteMilestone(id: string) {
+    const confirmed =
+      window.confirm(
+        'Delete this milestone?'
+      );
+
+    if (!confirmed) return;
+
+    const { error } =
+      await supabase
+        .from('project_milestones')
+        .delete()
+        .eq('id', id);
+
+    if (error) {
+      setError(error.message);
+      return;
+    }
+
+    setMilestones(x =>
+      x.filter(m => m.id !== id)
+    );
+  }
+
   const totals = useMemo(
     () => ({
       book: projects.reduce(
         (a, p) =>
-          a + Number(p.contract_value || 0),
+          a +
+          Number(
+            p.contract_value || 0
+          ),
         0
       ),
 
       cost: projects.reduce(
         (a, p) =>
-          a + Number(p.actual_cost || 0),
+          a +
+          Number(
+            p.actual_cost || 0
+          ),
         0
       )
     }),
@@ -291,52 +454,72 @@ export default function Home() {
   }
 
   if (!session) {
-    if (typeof window !== 'undefined') {
-      window.location.replace('/login');
+    if (
+      typeof window !==
+      'undefined'
+    ) {
+      window.location.replace(
+        '/login'
+      );
     }
 
     return null;
   }
 
   const activeLabel =
-    nav.find(x => x[2] === view)?.[0] ||
+    nav.find(
+      x => x[2] === view
+    )?.[0] ||
     'Command Center';
 
   return (
     <div className="app">
-
-      {/* SIDEBAR */}
-
       <aside
         className={`sidebar ${
           mobile ? 'show' : ''
         }`}
       >
         <div className="brand">
-          <div className="mark">S</div>
+          <div className="mark">
+            S
+          </div>
 
           <div>
             <b>solusi</b>
-            <small>OPERATING SYSTEM</small>
+            <small>
+              OPERATING SYSTEM
+            </small>
           </div>
 
           <button
             className="mobileClose"
-            onClick={() => setMobile(false)}
+            onClick={() =>
+              setMobile(false)
+            }
           >
             <X size={18} />
           </button>
         </div>
 
         <div className="workspace">
-          <small>WORKSPACE</small>
+          <small>
+            WORKSPACE
+          </small>
+
           <b>Solusi Design</b>
-          <span>Commercial Interiors</span>
+
+          <span>
+            Commercial Interiors
+          </span>
         </div>
 
         <nav>
           {nav.map(
-            ([label, Icon, key]) => (
+            ([
+              label,
+              Icon,
+              key
+            ]) => (
               <button
                 key={key}
                 className={
@@ -346,23 +529,32 @@ export default function Home() {
                 }
                 onClick={() => {
                   setView(key);
-                  setSelectedProject(null);
+                  setSelectedProject(
+                    null
+                  );
+                  setMilestones([]);
                   setMobile(false);
                 }}
               >
                 <Icon size={16} />
-                <span>{label}</span>
+                <span>
+                  {label}
+                </span>
               </button>
             )
           )}
         </nav>
 
         <div className="user">
-          <div className="avatar">SH</div>
+          <div className="avatar">
+            SH
+          </div>
 
           <div>
             <b>
-              {session.user.email?.split('@')[0] ||
+              {session.user.email?.split(
+                '@'
+              )[0] ||
                 'Owner'}
             </b>
 
@@ -381,16 +573,14 @@ export default function Home() {
         </div>
       </aside>
 
-      {/* MAIN */}
-
       <main>
-
         <header>
           <div className="headerTitle">
-
             <button
               className="hamb"
-              onClick={() => setMobile(true)}
+              onClick={() =>
+                setMobile(true)
+              }
             >
               <Menu size={20} />
             </button>
@@ -400,18 +590,21 @@ export default function Home() {
               {activeLabel.toUpperCase()}
             </div>
 
-            <h1>{activeLabel}</h1>
+            <h1>
+              {activeLabel}
+            </h1>
           </div>
 
           <div className="headerTools">
-
             <div className="search">
               <Search size={15} />
 
               <input
                 value={query}
                 onChange={e =>
-                  setQuery(e.target.value)
+                  setQuery(
+                    e.target.value
+                  )
                 }
                 placeholder="Search clients, projects…"
               />
@@ -421,13 +614,15 @@ export default function Home() {
               <Bell size={16} />
             </button>
 
-            {(view === 'projects' ||
+            {(view ===
+              'projects' ||
               view === 'home') && (
               <button
                 className="primary"
                 onClick={() =>
                   setModal(
-                    view === 'projects'
+                    view ===
+                      'projects'
                       ? 'project'
                       : 'client'
                   )
@@ -441,14 +636,23 @@ export default function Home() {
         </header>
 
         <section className="page">
-
           {error && (
             <div className="authError pageAlert">
               {error}
 
               <button
                 className="small"
-                onClick={loadData}
+                onClick={() => {
+                  if (
+                    selectedProject
+                  ) {
+                    loadMilestones(
+                      selectedProject.id
+                    );
+                  } else {
+                    loadData();
+                  }
+                }}
               >
                 <RefreshCw size={12} />
                 Retry
@@ -457,41 +661,62 @@ export default function Home() {
           )}
 
           {view === 'home' ? (
-
             <Dashboard
               projects={projects}
               clients={clients}
               totals={totals}
             />
-
-          ) : view === 'projects' ? (
-
+          ) : view ===
+            'projects' ? (
             selectedProject ? (
-
               <ProjectDetail
-                project={selectedProject}
+                project={
+                  selectedProject
+                }
                 clients={clients}
-                onBack={() =>
-                  setSelectedProject(null)
+                milestones={
+                  milestones
+                }
+                onBack={() => {
+                  setSelectedProject(
+                    null
+                  );
+                  setMilestones([]);
+                }}
+                onAddMilestone={() => {
+                  setModal(
+                    'milestone'
+                  );
+                }}
+                onUpdateMilestone={
+                  updateMilestone
+                }
+                onDeleteMilestone={
+                  deleteMilestone
                 }
               />
-
             ) : (
-
               <Projects
                 projects={projects}
                 clients={clients}
                 query={query}
                 onAdd={() =>
-                  setModal('project')
+                  setModal(
+                    'project'
+                  )
                 }
-                onOpen={setSelectedProject}
+                onOpen={async p => {
+                  setSelectedProject(
+                    p
+                  );
+                  await loadMilestones(
+                    p.id
+                  );
+                }}
               />
-
             )
-
-          ) : view === 'sales' ? (
-
+          ) : view ===
+            'sales' ? (
             <Clients
               clients={clients}
               query={query}
@@ -499,23 +724,19 @@ export default function Home() {
                 setModal('client')
               }
             />
-
           ) : (
-
             <Placeholder
               title={activeLabel}
             />
-
           )}
-
         </section>
       </main>
 
-      {/* MODALS */}
-
       {modal === 'client' && (
         <ClientModal
-          close={() => setModal(null)}
+          close={() =>
+            setModal(null)
+          }
           save={addClient}
         />
       )}
@@ -523,19 +744,32 @@ export default function Home() {
       {modal === 'project' && (
         <ProjectModal
           clients={clients}
-          close={() => setModal(null)}
+          close={() =>
+            setModal(null)
+          }
           save={addProject}
         />
       )}
 
+      {modal === 'milestone' &&
+        selectedProject && (
+          <MilestoneModal
+            project={
+              selectedProject
+            }
+            close={() =>
+              setModal(null)
+            }
+            save={addMilestone}
+          />
+        )}
     </div>
   );
 }
 
-
-/* =========================================================
+/* =========================
    DASHBOARD
-========================================================= */
+========================= */
 
 function Dashboard({
   projects,
@@ -552,43 +786,46 @@ function Dashboard({
   return (
     <>
       <div className="welcome">
-
         <div>
           <h2>
             Good evening, Shubh.
           </h2>
 
           <p>
-            Your live operating view —
-            connected to Supabase.
+            Your live operating view
+            — connected to Supabase.
           </p>
         </div>
 
         <span className="date">
-          Live data • {projects.length} projects •{' '}
+          Live data •{' '}
+          {projects.length} projects •{' '}
           {clients.length} clients
         </span>
-
       </div>
 
       <div className="kpis grid5">
-
         <Kpi
           title="PROJECT BOOK"
-          value={money(totals.book)}
+          value={money(
+            totals.book
+          )}
           note={`${projects.length} active projects`}
         />
 
         <Kpi
           title="ACTUAL COST"
-          value={money(totals.cost)}
+          value={money(
+            totals.cost
+          )}
           note="From project records"
         />
 
         <Kpi
           title="GROSS PROFIT"
           value={money(
-            totals.book - totals.cost
+            totals.book -
+              totals.cost
           )}
           note="Contract value − actual cost"
           good
@@ -609,37 +846,31 @@ function Dashboard({
           )}
           note="Live database"
         />
-
       </div>
 
       <div className="twoCols">
-
         <Card>
-
           <Section
             title="Project Command"
             sub="Live project records"
           />
 
-          {projects.length === 0 ? (
-
-            <Empty
-              text="Create your first project."
-            />
-
+          {projects.length ===
+          0 ? (
+            <Empty text="Create your first project." />
           ) : (
-
             projects
               .slice(0, 8)
               .map(p => (
-
                 <div
                   className="project"
                   key={p.id}
                 >
-
                   <div className="projectTop">
-                    <b>{p.name}</b>
+                    <b>
+                      {p.name}
+                    </b>
+
                     <Badge>
                       {p.status}
                     </Badge>
@@ -650,7 +881,8 @@ function Dashboard({
                       p.client_id,
                       clients
                     )}{' '}
-                    • {p.progress}% complete
+                    • {p.progress}%
+                    complete
                   </small>
 
                   <div className="bar">
@@ -662,12 +894,12 @@ function Dashboard({
                   </div>
 
                   <div className="projectFoot">
-
                     <span>
                       Budget{' '}
                       {money(
                         Number(
-                          p.approved_budget || 0
+                          p.approved_budget ||
+                            0
                         )
                       )}
                     </span>
@@ -675,52 +907,77 @@ function Dashboard({
                     <b>
                       {money(
                         Number(
-                          p.contract_value || 0
+                          p.contract_value ||
+                            0
                         ) -
-                        Number(
-                          p.actual_cost || 0
-                        )
+                          Number(
+                            p.actual_cost ||
+                              0
+                          )
                       )}{' '}
                       GP
                     </b>
-
                   </div>
-
                 </div>
-
               ))
-
           )}
-
         </Card>
 
         <Card>
-
           <Section
             title="System foundation"
             sub="Now connected"
           />
 
           <div className="list">
-
             <div className="listItem">
-              <UserPlus size={14} />
+              <UserPlus
+                size={14}
+              />
 
               <div>
-                <b>Clients</b>
+                <b>
+                  Clients
+                </b>
+
                 <small>
-                  CRUD + search-ready
+                  CRUD +
+                  search-ready
                 </small>
               </div>
             </div>
 
             <div className="listItem">
-              <BriefcaseBusiness size={14} />
+              <BriefcaseBusiness
+                size={14}
+              />
 
               <div>
-                <b>Projects</b>
+                <b>
+                  Projects
+                </b>
+
                 <small>
-                  Linked to clients
+                  Linked to
+                  clients
+                </small>
+              </div>
+            </div>
+
+            <div className="listItem">
+              <CheckCircle2
+                size={14}
+              />
+
+              <div>
+                <b>
+                  Milestones
+                </b>
+
+                <small>
+                  Project
+                  execution
+                  tracking
                 </small>
               </div>
             </div>
@@ -729,26 +986,26 @@ function Dashboard({
               <ShieldDot />
 
               <div>
-                <b>Authentication</b>
+                <b>
+                  Authentication
+                </b>
+
                 <small>
-                  Supabase session
+                  Supabase
+                  session
                 </small>
               </div>
             </div>
-
           </div>
-
         </Card>
-
       </div>
     </>
   );
 }
 
-
-/* =========================================================
-   CLIENT HELPERS
-========================================================= */
+/* =========================
+   CLIENTS
+========================= */
 
 function clientNameLocal(
   id: string | null,
@@ -758,29 +1015,16 @@ function clientNameLocal(
     x => x.id === id
   );
 
-  if (!c) {
-    return 'Unassigned';
+  if (!c) return 'Unassigned';
+
+  if (c.unit_building_name) {
+    return c.unit_number
+      ? `${c.unit_building_name} • ${c.unit_number}`
+      : c.unit_building_name;
   }
 
-  if (
-    c.unit_building_name &&
-    c.unit_number
-  ) {
-    return `${c.unit_building_name} • ${c.unit_number}`;
-  }
-
-  return (
-    c.unit_building_name ||
-    c.unit_number ||
-    c.name ||
-    'Unassigned'
-  );
+  return c.name;
 }
-
-
-/* =========================================================
-   KPI
-========================================================= */
 
 function Kpi({
   title,
@@ -797,33 +1041,30 @@ function Kpi({
 }) {
   return (
     <Card className="kpi">
-
       <div className="kpiTop">
-        <span>{title}</span>
+        <span>
+          {title}
+        </span>
       </div>
 
-      <strong>{value}</strong>
+      <strong>
+        {value}
+      </strong>
 
       <small
         className={
           good
             ? 'goodText'
             : bad
-            ? 'badText'
-            : ''
+              ? 'badText'
+              : ''
         }
       >
         {note}
       </small>
-
     </Card>
   );
 }
-
-
-/* =========================================================
-   CLIENTS
-========================================================= */
 
 function Clients({
   clients,
@@ -834,20 +1075,21 @@ function Clients({
   query: string;
   onAdd: () => void;
 }) {
-
-  const list = clients.filter(c =>
-    `
-      ${c.name}
-      ${c.unit_building_name || ''}
-      ${c.unit_number || ''}
-      ${c.email || ''}
-      ${c.phone || ''}
-    `
-      .toLowerCase()
-      .includes(
-        query.toLowerCase()
-      )
-  );
+  const list =
+    clients.filter(c =>
+      `${c.name} ${
+        c.unit_building_name ||
+        ''
+      } ${
+        c.unit_number || ''
+      } ${
+        c.email || ''
+      }`
+        .toLowerCase()
+        .includes(
+          query.toLowerCase()
+        )
+    );
 
   return (
     <>
@@ -866,51 +1108,39 @@ function Clients({
       />
 
       <Card>
-
         <Table
           headers={[
             'Client',
-            'Unit Building',
+            'Unit / Building',
             'Unit Number',
             'Phone',
             'Email'
           ]}
           rows={list.map(c => [
-
             <b key="name">
               {c.name}
             </b>,
-
             c.unit_building_name ||
               '—',
-
             c.unit_number ||
               '—',
-
-            c.phone ||
-              '—',
-
-            c.email ||
-              '—'
-
+            c.phone || '—',
+            c.email || '—'
           ])}
         />
 
-        {list.length === 0 && (
-          <Empty
-            text="No clients yet. Create your first client."
-          />
+        {list.length ===
+          0 && (
+          <Empty text="No clients yet. Create your first client." />
         )}
-
       </Card>
     </>
   );
 }
 
-
-/* =========================================================
+/* =========================
    PROJECTS
-========================================================= */
+========================= */
 
 function Projects({
   projects,
@@ -925,20 +1155,17 @@ function Projects({
   onAdd: () => void;
   onOpen: (p: Project) => void;
 }) {
-
-  const list = projects.filter(p =>
-    `
-      ${p.name}
-      ${clientNameLocal(
+  const list =
+    projects.filter(p =>
+      `${p.name} ${clientNameLocal(
         p.client_id,
         clients
-      )}
-    `
-      .toLowerCase()
-      .includes(
-        query.toLowerCase()
-      )
-  );
+      )}`
+        .toLowerCase()
+        .includes(
+          query.toLowerCase()
+        )
+    );
 
   return (
     <>
@@ -957,20 +1184,18 @@ function Projects({
       />
 
       <div className="threeCols">
-
         {list.map(p => (
-
           <Card
             key={p.id}
             onClick={() =>
               onOpen(p)
             }
           >
-
             <div className="sectionHead">
-
               <div>
-                <h3>{p.name}</h3>
+                <h3>
+                  {p.name}
+                </h3>
 
                 <span>
                   {clientNameLocal(
@@ -983,7 +1208,6 @@ function Projects({
               <Badge>
                 {p.status}
               </Badge>
-
             </div>
 
             <div className="bar bigbar">
@@ -995,27 +1219,27 @@ function Projects({
             </div>
 
             <div className="projectFoot">
-
               <span>
-                {p.progress}% complete
+                {p.progress}%
+                complete
               </span>
 
               <b>
                 {money(
                   Number(
-                    p.contract_value || 0
+                    p.contract_value ||
+                      0
                   ) -
-                  Number(
-                    p.actual_cost || 0
-                  )
+                    Number(
+                      p.actual_cost ||
+                        0
+                    )
                 )}{' '}
                 GP
               </b>
-
             </div>
 
             <div className="miniStats">
-
               <div>
                 <small>
                   Contract
@@ -1024,7 +1248,8 @@ function Projects({
                 <b>
                   {money(
                     Number(
-                      p.contract_value || 0
+                      p.contract_value ||
+                        0
                     )
                   )}
                 </b>
@@ -1038,80 +1263,104 @@ function Projects({
                 <b>
                   {money(
                     Number(
-                      p.approved_budget || 0
+                      p.approved_budget ||
+                        0
                     )
                   )}
                 </b>
               </div>
-
             </div>
 
             <small>
-              Due {p.due_date || 'TBD'}
+              Due{' '}
+              {p.due_date ||
+                'TBD'}
             </small>
-
           </Card>
-
         ))}
 
-        {list.length === 0 && (
-          <Empty
-            text="No projects yet. Create your first project."
-          />
+        {list.length ===
+          0 && (
+          <Empty text="No projects yet. Create your first project." />
         )}
-
       </div>
     </>
   );
 }
 
-
-/* =========================================================
-   PROJECT DETAIL
-========================================================= */
+/* =========================
+   PROJECT DETAIL + MILESTONES
+========================= */
 
 function ProjectDetail({
   project,
   clients,
-  onBack
+  milestones,
+  onBack,
+  onAddMilestone,
+  onUpdateMilestone,
+  onDeleteMilestone
 }: {
   project: Project;
   clients: Client[];
+  milestones: Milestone[];
   onBack: () => void;
+  onAddMilestone: () => void;
+  onUpdateMilestone: (
+    id: string,
+    updates: Partial<Milestone>
+  ) => void;
+  onDeleteMilestone: (
+    id: string
+  ) => void;
 }) {
-
-  const client = clients.find(
-    c => c.id === project.client_id
-  );
+  const client =
+    clientNameLocal(
+      project.client_id,
+      clients
+    );
 
   const gp =
-    Number(project.contract_value || 0) -
-    Number(project.actual_cost || 0);
+    Number(
+      project.contract_value || 0
+    ) -
+    Number(
+      project.actual_cost || 0
+    );
 
-  const margin =
-    Number(project.contract_value || 0) > 0
-      ? (gp /
-          Number(project.contract_value)) *
-        100
+  const completed =
+    milestones.filter(
+      m => m.status === 'Done'
+    ).length;
+
+  const milestoneProgress =
+    milestones.length > 0
+      ? Math.round(
+          milestones.reduce(
+            (sum, m) =>
+              sum +
+              Number(
+                m.progress || 0
+              ),
+            0
+          ) /
+            milestones.length
+        )
       : 0;
+
+  const phasesUsed = Array.from(
+    new Set(
+      milestones.map(
+        m => m.phase
+      )
+    )
+  );
 
   return (
     <>
       <Top
         title={project.name}
-        sub={
-          client
-            ? `${client.name}${
-                client.unit_building_name
-                  ? ` • ${client.unit_building_name}`
-                  : ''
-              }${
-                client.unit_number
-                  ? ` • ${client.unit_number}`
-                  : ''
-              }`
-            : 'Unassigned client'
-        }
+        sub={client}
         action={
           <button
             className="secondary"
@@ -1122,87 +1371,19 @@ function ProjectDetail({
         }
       />
 
-      {/* PROJECT HEADER */}
+      <div className="threeCols">
+        <Card>
+          <small>
+            Status
+          </small>
 
-      <Card className="hero">
-
-        <div className="sectionHead">
-
-          <div>
-            <h3>
-              Project Overview
-            </h3>
-
-            <span>
-              Core project operating information
-            </span>
-          </div>
-
-          <Badge>
+          <h3>
             {project.status}
-          </Badge>
+          </h3>
 
-        </div>
-
-        <div className="miniStats">
-
-          <div>
-            <small>
-              Client
-            </small>
-
-            <b>
-              {client?.name ||
-                'Unassigned'}
-            </b>
-          </div>
-
-          <div>
-            <small>
-              Building
-            </small>
-
-            <b>
-              {client?.unit_building_name ||
-                '—'}
-            </b>
-          </div>
-
-          <div>
-            <small>
-              Unit
-            </small>
-
-            <b>
-              {client?.unit_number ||
-                '—'}
-            </b>
-          </div>
-
-        </div>
-
-        <div
-          style={{
-            marginTop: 24
-          }}
-        >
-
-          <div
-            style={{
-              display: 'flex',
-              justifyContent:
-                'space-between',
-              marginBottom: 8
-            }}
-          >
-            <small>
-              Project Progress
-            </small>
-
-            <b>
-              {project.progress}%
-            </b>
-          </div>
+          <small>
+            Progress
+          </small>
 
           <div className="bar bigbar">
             <i
@@ -1212,17 +1393,13 @@ function ProjectDetail({
             />
           </div>
 
-        </div>
-
-      </Card>
-
-
-      {/* FINANCIAL SUMMARY */}
-
-      <div className="threeCols">
+          <b>
+            {project.progress}%
+            complete
+          </b>
+        </Card>
 
         <Card>
-
           <small>
             Contract Value
           </small>
@@ -1230,39 +1407,27 @@ function ProjectDetail({
           <h2>
             {money(
               Number(
-                project.contract_value || 0
+                project.contract_value ||
+                  0
               )
             )}
           </h2>
-
-          <small>
-            Total project revenue
-          </small>
-
-        </Card>
-
-        <Card>
 
           <small>
             Approved Budget
           </small>
 
-          <h2>
+          <h3>
             {money(
               Number(
-                project.approved_budget || 0
+                project.approved_budget ||
+                  0
               )
             )}
-          </h2>
-
-          <small>
-            Planned project cost
-          </small>
-
+          </h3>
         </Card>
 
         <Card>
-
           <small>
             Actual Cost
           </small>
@@ -1270,92 +1435,87 @@ function ProjectDetail({
           <h2>
             {money(
               Number(
-                project.actual_cost || 0
+                project.actual_cost ||
+                  0
               )
             )}
           </h2>
-
-          <small>
-            Recorded cost to date
-          </small>
-
-        </Card>
-
-      </div>
-
-
-      {/* PROFITABILITY */}
-
-      <div className="threeCols">
-
-        <Card>
 
           <small>
             Gross Profit
           </small>
 
-          <h2>
+          <h3>
             {money(gp)}
-          </h2>
-
-          <small className="goodText">
-            Contract value − actual cost
-          </small>
-
+          </h3>
         </Card>
-
-        <Card>
-
-          <small>
-            Gross Margin
-          </small>
-
-          <h2>
-            {margin.toFixed(1)}%
-          </h2>
-
-          <small>
-            Current project margin
-          </small>
-
-        </Card>
-
-        <Card>
-
-          <small>
-            Budget Remaining
-          </small>
-
-          <h2>
-            {money(
-              Number(
-                project.approved_budget || 0
-              ) -
-              Number(
-                project.actual_cost || 0
-              )
-            )}
-          </h2>
-
-          <small>
-            Approved budget − actual cost
-          </small>
-
-        </Card>
-
       </div>
 
-
-      {/* DATES */}
-
       <Card className="hero">
+        <div className="sectionHead">
+          <div>
+            <h3>
+              Project Overview
+            </h3>
 
-        <Section
-          title="Project Timeline"
-          sub="Current project schedule"
-        />
+            <span>
+              Core project
+              information
+            </span>
+          </div>
+
+          <Badge>
+            {project.status}
+          </Badge>
+        </div>
 
         <div className="miniStats">
+          <div>
+            <small>
+              Client
+            </small>
+
+            <b>
+              {clients.find(
+                c =>
+                  c.id ===
+                  project.client_id
+              )?.name ||
+                'Unassigned'}
+            </b>
+          </div>
+
+          <div>
+            <small>
+              Unit / Building
+            </small>
+
+            <b>
+              {clients.find(
+                c =>
+                  c.id ===
+                  project.client_id
+              )
+                ?.unit_building_name ||
+                '—'}
+            </b>
+          </div>
+
+          <div>
+            <small>
+              Unit Number
+            </small>
+
+            <b>
+              {clients.find(
+                c =>
+                  c.id ===
+                  project.client_id
+              )
+                ?.unit_number ||
+                '—'}
+            </b>
+          </div>
 
           <div>
             <small>
@@ -1378,80 +1538,255 @@ function ProjectDetail({
                 'TBD'}
             </b>
           </div>
-
-          <div>
-            <small>
-              Status
-            </small>
-
-            <b>
-              {project.status}
-            </b>
-          </div>
-
         </div>
-
       </Card>
-
-
-      {/* NEXT MODULE PLACEHOLDER */}
 
       <Card className="hero">
-
         <Section
-          title="Project Operations"
-          sub="Operational modules will connect here"
+          title="Project Milestones"
+          sub={`${completed} of ${milestones.length} milestones completed`}
+          action={
+            <button
+              className="primary"
+              onClick={
+                onAddMilestone
+              }
+            >
+              <Plus size={14} />
+              Add Milestone
+            </button>
+          }
         />
 
-        <div className="heroMetrics">
-
+        <div className="milestoneSummary">
           <div>
-            <b>01</b>
             <small>
-              Tasks & SOP
+              Overall Milestone
+              Progress
             </small>
+
+            <strong>
+              {milestoneProgress}%
+            </strong>
           </div>
 
           <div>
-            <b>02</b>
             <small>
-              Site Control
+              Total Milestones
             </small>
+
+            <strong>
+              {milestones.length}
+            </strong>
           </div>
 
           <div>
-            <b>03</b>
             <small>
-              Labour
+              Completed
             </small>
+
+            <strong>
+              {completed}
+            </strong>
           </div>
 
           <div>
-            <b>04</b>
             <small>
-              Procurement
+              Active Phases
             </small>
-          </div>
 
-          <div>
-            <b>05</b>
-            <small>
-              Finance
-            </small>
+            <strong>
+              {phasesUsed.length}
+            </strong>
           </div>
-
         </div>
 
+        {milestones.length ===
+        0 ? (
+          <div className="empty">
+            No milestones yet.
+            Add your first
+            execution milestone
+            for this project.
+          </div>
+        ) : (
+          <div className="milestoneList">
+            {milestones.map(
+              milestone => (
+                <MilestoneRow
+                  key={
+                    milestone.id
+                  }
+                  milestone={
+                    milestone
+                  }
+                  onUpdate={
+                    onUpdateMilestone
+                  }
+                  onDelete={
+                    onDeleteMilestone
+                  }
+                />
+              )
+            )}
+          </div>
+        )}
       </Card>
-
     </>
   );
 }
 
+function MilestoneRow({
+  milestone,
+  onUpdate,
+  onDelete
+}: {
+  milestone: Milestone;
+  onUpdate: (
+    id: string,
+    updates: Partial<Milestone>
+  ) => void;
+  onDelete: (
+    id: string
+  ) => void;
+}) {
+  return (
+    <div className="milestoneRow">
+      <div className="milestoneMain">
+        <div className="milestoneTitle">
+          <div>
+            <small>
+              {milestone.phase}
+            </small>
 
-/* =========================================================
+            <h4>
+              {milestone.name}
+            </h4>
+          </div>
+
+          <Badge>
+            {milestone.status}
+          </Badge>
+        </div>
+
+        <div className="milestoneBar">
+          <i
+            style={{
+              width: `${milestone.progress}%`
+            }}
+          />
+        </div>
+
+        <div className="milestoneMeta">
+          <span>
+            <CalendarDays
+              size={13}
+            />
+
+            {milestone.planned_start ||
+              'TBD'}
+            {' → '}
+            {milestone.planned_finish ||
+              'TBD'}
+          </span>
+
+          <span>
+            <UserRound
+              size={13}
+            />
+
+            {milestone.responsible_person ||
+              'Unassigned'}
+          </span>
+
+          <b>
+            {milestone.progress}%
+          </b>
+        </div>
+
+        {milestone.notes && (
+          <small className="milestoneNotes">
+            {milestone.notes}
+          </small>
+        )}
+      </div>
+
+      <div className="milestoneActions">
+        <select
+          value={
+            milestone.status
+          }
+          onChange={e =>
+            onUpdate(
+              milestone.id,
+              {
+                status:
+                  e.target
+                    .value
+              }
+            )
+          }
+        >
+          {milestoneStatuses.map(
+            status => (
+              <option
+                key={status}
+                value={status}
+              >
+                {status}
+              </option>
+            )
+          )}
+        </select>
+
+        <select
+          value={
+            milestone.progress
+          }
+          onChange={e =>
+            onUpdate(
+              milestone.id,
+              {
+                progress:
+                  Number(
+                    e.target
+                      .value
+                  )
+              }
+            )
+          }
+        >
+          {[0, 25, 50, 75, 100].map(
+            value => (
+              <option
+                key={value}
+                value={value}
+              >
+                {value}%
+              </option>
+            )
+          )}
+        </select>
+
+        <button
+          className="iconBtn"
+          title="Delete milestone"
+          onClick={() =>
+            onDelete(
+              milestone.id
+            )
+          }
+        >
+          <X size={14} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* =========================
    PLACEHOLDER
-========================================================= */
+========================= */
 
 function Placeholder({
   title
@@ -1466,20 +1801,21 @@ function Placeholder({
       />
 
       <Card className="hero">
-
         <h2>
-          Production module queued
+          Production module
+          queued
         </h2>
 
         <p>
-          We are building this module on top
-          of the live Clients + Projects
-          foundation instead of demo-only
+          We are building this
+          module on top of the
+          live Clients +
+          Projects foundation
+          instead of demo-only
           state.
         </p>
 
         <div className="heroMetrics">
-
           <div>
             <b>LIVE</b>
             <small>
@@ -1500,132 +1836,15 @@ function Placeholder({
               For next workflow
             </small>
           </div>
-
         </div>
-
       </Card>
     </>
   );
 }
 
-
-/* =========================================================
-   TOP
-========================================================= */
-
-function Top({
-  title,
-  sub,
-  action
-}: {
-  title: string;
-  sub: string;
-  action?: React.ReactNode;
-}) {
-  return (
-    <div className="topLine">
-
-      <div>
-        <h2>{title}</h2>
-        <p>{sub}</p>
-      </div>
-
-      {action}
-
-    </div>
-  );
-}
-
-
-/* =========================================================
-   TABLE
-========================================================= */
-
-function Table({
-  headers,
-  rows
-}: {
-  headers: string[];
-  rows: React.ReactNode[][];
-}) {
-  return (
-    <div className="tableWrap">
-
-      <table>
-
-        <thead>
-          <tr>
-            {headers.map(h => (
-              <th key={h}>
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-
-        <tbody>
-
-          {rows.map((r, i) => (
-
-            <tr key={i}>
-
-              {r.map((c, j) => (
-                <td key={j}>
-                  {c}
-                </td>
-              ))}
-
-            </tr>
-
-          ))}
-
-        </tbody>
-
-      </table>
-
-    </div>
-  );
-}
-
-
-/* =========================================================
-   EMPTY
-========================================================= */
-
-function Empty({
-  text
-}: {
-  text: string;
-}) {
-  return (
-    <div className="empty">
-      {text}
-    </div>
-  );
-}
-
-
-/* =========================================================
-   SHIELD
-========================================================= */
-
-function ShieldDot() {
-  return (
-    <div
-      style={{
-        width: 14,
-        height: 14,
-        borderRadius: 4,
-        background: '#e8f6ee'
-      }}
-    />
-  );
-}
-
-
-/* =========================================================
+/* =========================
    CLIENT MODAL
-========================================================= */
+========================= */
 
 function ClientModal({
   close,
@@ -1640,14 +1859,14 @@ function ClientModal({
     email: string;
   }) => Promise<void>;
 }) {
-
-  const [v, setV] = useState({
-    name: '',
-    unit_building_name: '',
-    unit_number: '',
-    phone: '',
-    email: ''
-  });
+  const [v, setV] =
+    useState({
+      name: '',
+      unit_building_name: '',
+      unit_number: '',
+      phone: '',
+      email: ''
+    });
 
   const [busy, setBusy] =
     useState(false);
@@ -1662,7 +1881,6 @@ function ClientModal({
       busy={busy}
       error={error}
       onSave={async () => {
-
         if (!v.name) {
           setError(
             'Client name is required.'
@@ -1676,18 +1894,15 @@ function ClientModal({
           await save(v);
         } catch (e: any) {
           setError(
-            e.message ||
-              'Unable to save client.'
+            e.message
           );
         } finally {
           setBusy(false);
         }
-
       }}
     >
-
       <Field
-        label="Client name"
+        label="Contact name"
         value={v.name}
         onChange={x =>
           setV({
@@ -1699,14 +1914,15 @@ function ClientModal({
       />
 
       <Field
-        label="Unit Building Name"
+        label="Unit / Building Name"
         value={
           v.unit_building_name
         }
         onChange={x =>
           setV({
             ...v,
-            unit_building_name: x
+            unit_building_name:
+              x
           })
         }
         placeholder="e.g. EON Fairfox"
@@ -1714,7 +1930,9 @@ function ClientModal({
 
       <Field
         label="Unit Number"
-        value={v.unit_number}
+        value={
+          v.unit_number
+        }
         onChange={x =>
           setV({
             ...v,
@@ -1745,17 +1963,15 @@ function ClientModal({
             email: x
           })
         }
-        placeholder="client@example.com"
+        placeholder="client@company.com"
       />
-
     </Modal>
   );
 }
 
-
-/* =========================================================
+/* =========================
    PROJECT MODAL
-========================================================= */
+========================= */
 
 function ProjectModal({
   clients,
@@ -1773,22 +1989,29 @@ function ProjectModal({
     due_date: string;
   }) => Promise<void>;
 }) {
-
-  const [v, setV] = useState({
-    name: '',
-    client_id:
-      clients[0]?.id || '',
-    contract_value: '',
-    approved_budget: '',
-    start_date: '',
-    due_date: ''
-  });
+  const [v, setV] =
+    useState({
+      name: '',
+      client_id:
+        clients[0]?.id || '',
+      contract_value: '',
+      approved_budget: '',
+      start_date: '',
+      due_date: ''
+    });
 
   const [busy, setBusy] =
     useState(false);
 
   const [error, setError] =
     useState('');
+
+  const selectedClient =
+    clients.find(
+      c =>
+        c.id ===
+        v.client_id
+    );
 
   return (
     <Modal
@@ -1797,7 +2020,6 @@ function ProjectModal({
       busy={busy}
       error={error}
       onSave={async () => {
-
         if (
           !v.name ||
           !v.client_id
@@ -1811,40 +2033,34 @@ function ProjectModal({
         setBusy(true);
 
         try {
-
           await save({
             name: v.name,
-            client_id: v.client_id,
+            client_id:
+              v.client_id,
             contract_value:
               Number(
-                v.contract_value || 0
+                v.contract_value ||
+                  0
               ),
             approved_budget:
               Number(
-                v.approved_budget || 0
+                v.approved_budget ||
+                  0
               ),
             start_date:
               v.start_date,
             due_date:
               v.due_date
           });
-
         } catch (e: any) {
-
           setError(
-            e.message ||
-              'Unable to save project.'
+            e.message
           );
-
         } finally {
-
           setBusy(false);
-
         }
-
       }}
     >
-
       <Field
         label="Project name"
         value={v.name}
@@ -1861,36 +2077,49 @@ function ProjectModal({
         Client
 
         <select
-          value={v.client_id}
+          value={
+            v.client_id
+          }
           onChange={e =>
             setV({
               ...v,
               client_id:
-                e.target.value
+                e.target
+                  .value
             })
           }
         >
-
-          {clients.map(c => (
-
-            <option
-              key={c.id}
-              value={c.id}
-            >
-              {c.name}
-              {c.unit_building_name
-                ? ` • ${c.unit_building_name}`
-                : ''}
-              {c.unit_number
-                ? ` • ${c.unit_number}`
-                : ''}
-            </option>
-
-          ))}
-
+          {clients.map(
+            c => (
+              <option
+                key={c.id}
+                value={c.id}
+              >
+                {c.name}
+              </option>
+            )
+          )}
         </select>
-
       </label>
+
+      {selectedClient && (
+        <div className="selectedClientInfo">
+          <small>
+            Project location
+          </small>
+
+          <b>
+            {selectedClient.unit_building_name ||
+              'Building not specified'}
+          </b>
+
+          <span>
+            Unit{' '}
+            {selectedClient.unit_number ||
+              '—'}
+          </span>
+        </div>
+      )}
 
       <Field
         label="Contract value"
@@ -1915,7 +2144,8 @@ function ProjectModal({
         onChange={x =>
           setV({
             ...v,
-            approved_budget: x
+            approved_budget:
+              x
           })
         }
         placeholder="2050000"
@@ -1923,10 +2153,11 @@ function ProjectModal({
       />
 
       <div className="formGrid">
-
         <Field
           label="Start date"
-          value={v.start_date}
+          value={
+            v.start_date
+          }
           onChange={x =>
             setV({
               ...v,
@@ -1938,7 +2169,9 @@ function ProjectModal({
 
         <Field
           label="Due date"
-          value={v.due_date}
+          value={
+            v.due_date
+          }
           onChange={x =>
             setV({
               ...v,
@@ -1947,17 +2180,356 @@ function ProjectModal({
           }
           type="date"
         />
-
       </div>
-
     </Modal>
   );
 }
 
+/* =========================
+   MILESTONE MODAL
+========================= */
 
-/* =========================================================
-   FIELD
-========================================================= */
+function MilestoneModal({
+  project,
+  close,
+  save
+}: {
+  project: Project;
+  close: () => void;
+  save: (v: {
+    project_id: string;
+    phase: string;
+    name: string;
+    planned_start: string;
+    planned_finish: string;
+    status: string;
+    progress: number;
+    responsible_person: string;
+    notes: string;
+  }) => Promise<void>;
+}) {
+  const [v, setV] =
+    useState({
+      phase:
+        'Pre-Execution',
+      name: '',
+      planned_start: '',
+      planned_finish: '',
+      status: 'Pending',
+      progress: 0,
+      responsible_person:
+        '',
+      notes: ''
+    });
+
+  const [busy, setBusy] =
+    useState(false);
+
+  const [error, setError] =
+    useState('');
+
+  return (
+    <Modal
+      title="New Milestone"
+      close={close}
+      busy={busy}
+      error={error}
+      onSave={async () => {
+        if (!v.name) {
+          setError(
+            'Milestone name is required.'
+          );
+          return;
+        }
+
+        setBusy(true);
+
+        try {
+          await save({
+            project_id:
+              project.id,
+            phase: v.phase,
+            name: v.name,
+            planned_start:
+              v.planned_start,
+            planned_finish:
+              v.planned_finish,
+            status: v.status,
+            progress:
+              Number(
+                v.progress
+              ),
+            responsible_person:
+              v.responsible_person,
+            notes: v.notes
+          });
+        } catch (e: any) {
+          setError(
+            e.message
+          );
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <label>
+        Phase
+
+        <select
+          value={v.phase}
+          onChange={e =>
+            setV({
+              ...v,
+              phase:
+                e.target.value
+            })
+          }
+        >
+          {phases.map(
+            phase => (
+              <option
+                key={phase}
+                value={phase}
+              >
+                {phase}
+              </option>
+            )
+          )}
+        </select>
+      </label>
+
+      <Field
+        label="Milestone name"
+        value={v.name}
+        onChange={x =>
+          setV({
+            ...v,
+            name: x
+          })
+        }
+        placeholder="e.g. Final Design Approval"
+      />
+
+      <div className="formGrid">
+        <Field
+          label="Planned start"
+          value={
+            v.planned_start
+          }
+          onChange={x =>
+            setV({
+              ...v,
+              planned_start:
+                x
+            })
+          }
+          type="date"
+        />
+
+        <Field
+          label="Planned finish"
+          value={
+            v.planned_finish
+          }
+          onChange={x =>
+            setV({
+              ...v,
+              planned_finish:
+                x
+            })
+          }
+          type="date"
+        />
+      </div>
+
+      <label>
+        Status
+
+        <select
+          value={v.status}
+          onChange={e =>
+            setV({
+              ...v,
+              status:
+                e.target.value
+            })
+          }
+        >
+          {milestoneStatuses.map(
+            status => (
+              <option
+                key={status}
+                value={status}
+              >
+                {status}
+              </option>
+            )
+          )}
+        </select>
+      </label>
+
+      <label>
+        Progress
+
+        <select
+          value={v.progress}
+          onChange={e =>
+            setV({
+              ...v,
+              progress:
+                Number(
+                  e.target.value
+                )
+            })
+          }
+        >
+          {[0, 25, 50, 75, 100].map(
+            value => (
+              <option
+                key={value}
+                value={value}
+              >
+                {value}%
+              </option>
+            )
+          )}
+        </select>
+      </label>
+
+      <Field
+        label="Responsible person"
+        value={
+          v.responsible_person
+        }
+        onChange={x =>
+          setV({
+            ...v,
+            responsible_person:
+              x
+          })
+        }
+        placeholder="e.g. Amit / Site Supervisor"
+      />
+
+      <label>
+        Notes
+
+        <textarea
+          value={v.notes}
+          onChange={e =>
+            setV({
+              ...v,
+              notes:
+                e.target.value
+            })
+          }
+          placeholder="Add milestone notes, dependencies or instructions..."
+          rows={4}
+        />
+      </label>
+    </Modal>
+  );
+}
+
+/* =========================
+   COMMON COMPONENTS
+========================= */
+
+function Top({
+  title,
+  sub,
+  action
+}: {
+  title: string;
+  sub: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="topLine">
+      <div>
+        <h2>
+          {title}
+        </h2>
+
+        <p>
+          {sub}
+        </p>
+      </div>
+
+      {action}
+    </div>
+  );
+}
+
+function Table({
+  headers,
+  rows
+}: {
+  headers: string[];
+  rows: React.ReactNode[][];
+}) {
+  return (
+    <div className="tableWrap">
+      <table>
+        <thead>
+          <tr>
+            {headers.map(
+              h => (
+                <th key={h}>
+                  {h}
+                </th>
+              )
+            )}
+          </tr>
+        </thead>
+
+        <tbody>
+          {rows.map(
+            (r, i) => (
+              <tr key={i}>
+                {r.map(
+                  (c, j) => (
+                    <td
+                      key={j}
+                    >
+                      {c}
+                    </td>
+                  )
+                )}
+              </tr>
+            )
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function Empty({
+  text
+}: {
+  text: string;
+}) {
+  return (
+    <div className="empty">
+      {text}
+    </div>
+  );
+}
+
+function ShieldDot() {
+  return (
+    <div
+      style={{
+        width: 14,
+        height: 14,
+        borderRadius: 4,
+        background:
+          '#e8f6ee'
+      }}
+    />
+  );
+}
 
 function Field({
   label,
@@ -1976,7 +2548,6 @@ function Field({
 }) {
   return (
     <label>
-
       {label}
 
       <input
@@ -1991,15 +2562,9 @@ function Field({
           placeholder
         }
       />
-
     </label>
   );
 }
-
-
-/* =========================================================
-   MODAL
-========================================================= */
 
 function Modal({
   title,
@@ -2025,11 +2590,8 @@ function Modal({
         close()
       }
     >
-
       <div className="modal">
-
         <div className="modalHead">
-
           <div>
             <small>
               SOLUSI OS
@@ -2045,7 +2607,6 @@ function Modal({
           >
             <X size={18} />
           </button>
-
         </div>
 
         <div className="modalBody">
@@ -2067,9 +2628,7 @@ function Modal({
             ? 'Saving…'
             : 'Save record'}
         </button>
-
       </div>
-
     </div>
   );
 }
