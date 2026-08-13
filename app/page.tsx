@@ -67,6 +67,17 @@ type Milestone = {
   sort_order: number;
 };
 
+type MilestoneTask = {
+  id: string;
+  milestone_id: string;
+  task_name: string;
+  responsible_person: string | null;
+  status: string;
+  sort_order: number;
+  completed_at: string | null;
+  created_at?: string;
+};
+
 const nav = [
   ['Command Center', LayoutDashboard, 'home'],
   ['Sales & CRM', Users, 'sales'],
@@ -104,6 +115,12 @@ const milestoneStatuses = [
   'Delayed',
   'On Hold'
 ];
+
+const [clients, setClients] = useState<Client[]>([]);
+const [projects, setProjects] = useState<Project[]>([]);
+const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+const [milestoneTasks, setMilestoneTasks] = useState<MilestoneTask[]>([]);
+const [error, setError] = useState('');
 
 const money = (n: number) =>
   `₹${(n / 100000).toFixed(1)}L`;
