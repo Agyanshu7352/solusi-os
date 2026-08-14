@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
-  "buildCommand": "npx prisma db push && npx tsx prisma/seed.ts && next build",
+  "buildCommand": "export DATABASE_URL=\"file:./dev.db\" && npx prisma db push && npx tsx prisma/seed.ts && next build",
   "installCommand": "npm install"
 }
