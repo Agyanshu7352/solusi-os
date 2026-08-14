@@ -266,28 +266,37 @@ export default function App() {
         fetch('/api/design').then(r => r.json())
       ]);
 
-      setDashboardData(dashRes);
-      setClients(clientRes || []);
-      setLeads(leadRes || []);
-      setProjects(projRes || []);
-      setSiteReports(siteRes || []);
-      if (labourRes) {
-        setTradeWorkers(labourRes.workers || []);
-        setLabourAssignments(labourRes.assignments || []);
+      setDashboardData(dashRes?.metrics ? dashRes : null);
+      setClients(Array.isArray(clientRes) ? clientRes : []);
+      setLeads(Array.isArray(leadRes) ? leadRes : []);
+      setProjects(Array.isArray(projRes) ? projRes : []);
+      setSiteReports(Array.isArray(siteRes) ? siteRes : []);
+      if (labourRes && !labourRes.error) {
+        setTradeWorkers(Array.isArray(labourRes.workers) ? labourRes.workers : []);
+        setLabourAssignments(Array.isArray(labourRes.assignments) ? labourRes.assignments : []);
+      } else {
+        setTradeWorkers([]);
+        setLabourAssignments([]);
       }
-      if (procRes) {
-        setMaterials(procRes.materials || []);
-        setPurchaseOrders(procRes.purchaseOrders || []);
+      if (procRes && !procRes.error) {
+        setMaterials(Array.isArray(procRes.materials) ? procRes.materials : []);
+        setPurchaseOrders(Array.isArray(procRes.purchaseOrders) ? procRes.purchaseOrders : []);
+      } else {
+        setMaterials([]);
+        setPurchaseOrders([]);
       }
-      setIssues(issueRes || []);
-      setVariations(varRes || []);
-      if (finRes) {
-        setFinanceEntries(finRes.entries || []);
-        setFinanceSummary(finRes.summary || []);
+      setIssues(Array.isArray(issueRes) ? issueRes : []);
+      setVariations(Array.isArray(varRes) ? varRes : []);
+      if (finRes && !finRes.error) {
+        setFinanceEntries(Array.isArray(finRes.entries) ? finRes.entries : []);
+        setFinanceSummary(Array.isArray(finRes.summary) ? finRes.summary : []);
+      } else {
+        setFinanceEntries([]);
+        setFinanceSummary([]);
       }
-      setApprovals(appRes || []);
-      setQuotations(quoRes || []);
-      if (desRes) {
+      setApprovals(Array.isArray(appRes) ? appRes : []);
+      setQuotations(Array.isArray(quoRes) ? quoRes : []);
+      if (desRes && !desRes.error) {
         setDesignData(desRes);
       }
     } catch (err: any) {
