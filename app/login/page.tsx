@@ -1,16 +1,8 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
-import { ArrowRight, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck, UserCheck } from 'lucide-react';
+import { ArrowRight, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-
-const DEMO_ACCOUNTS = [
-  { name: 'Shubham (Owner)', email: 'shubham@solusidesign.com', role: 'Owner' },
-  { name: 'Vikram (PM)', email: 'vikram.pm@solusidesign.com', role: 'PM' },
-  { name: 'Ananya (Designer)', email: 'ananya.design@solusidesign.com', role: 'Designer' },
-  { name: 'Rajesh (Supervisor)', email: 'rajesh.site@solusidesign.com', role: 'Supervisor' },
-  { name: 'Shivay (Admin)', email: 'shivay7352@gmail.com', role: 'Admin' }
-];
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -20,7 +12,7 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [checkingSession, setCheckingSession] = useState(true);
 
-  // Guard: If already logged in, redirect immediately to dashboard
+  // Backward/Forward Routing Guard: If already authenticated, redirect immediately to dashboard using replace()
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('solusi_user');
@@ -28,7 +20,7 @@ export default function LoginPage() {
         try {
           const parsed = JSON.parse(saved);
           if (parsed && parsed.name) {
-            window.location.href = '/';
+            window.location.replace('/');
             return;
           }
         } catch (e) {
@@ -41,8 +33,20 @@ export default function LoginPage() {
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (!email || !password) {
-      setError('Please enter email and password.');
+
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !password) {
+      setError('Please enter both email address and password.');
+      return;
+    }
+
+    if (!trimmedEmail.includes('@') || !trimmedEmail.includes('.')) {
+      setError('Please enter a valid email address.');
+      return;
+    }
+
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters long.');
       return;
     }
 
@@ -55,8 +59,7 @@ export default function LoginPage() {
       let userObj = null;
 
       if (!isPlaceholder) {
-        // Live Supabase Authentication if configured
-        const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
+        const { data, error: authError } = await supabase.auth.signInWithPassword({ email: trimmedEmail, password });
         if (authError || !data.user) {
           throw new Error(authError?.message || 'Invalid email or password. Access denied.');
         }
@@ -68,11 +71,10 @@ export default function LoginPage() {
           avatar: (data.user.email || 'US').substring(0, 2).toUpperCase()
         };
       } else {
-        // Authenticate via Solusi OS Database API
         const res = await fetch('/api/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password })
+          body: JSON.stringify({ email: trimmedEmail, password })
         });
 
         const data = await res.json();
@@ -85,7 +87,7 @@ export default function LoginPage() {
       }
 
       localStorage.setItem('solusi_user', JSON.stringify(userObj));
-      window.location.href = '/';
+      window.location.replace('/');
     } catch (err: any) {
       setError(err.message || 'Login failed. Please check your credentials.');
     } finally {
@@ -96,7 +98,7 @@ export default function LoginPage() {
   if (checkingSession) {
     return (
       <main className="authPage" style={{ background: '#0b1220', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
-        <div style={{ fontSize: 14, color: '#94a3b8' }}>Checking active session...</div>
+        <div style={{ fontSize: 13, color: '#94a3b8' }}>Verifying session...</div>
       </main>
     );
   }
@@ -116,39 +118,6 @@ export default function LoginPage() {
           <span className="authIcon"><LockKeyhole size={18} /></span>
           <h1>Sign in to Solusi OS</h1>
           <p>Run commercial interior design, BOQs, site control & finance in one workspace.</p>
-        </div>
-
-        {/* DEMO ACCOUNTS QUICK-SELECT CHIPS */}
-        <div style={{ marginBottom: 16, background: 'rgba(255, 255, 255, 0.03)', padding: 12, borderRadius: 10, border: '1px solid rgba(255, 255, 255, 0.08)' }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
-            <UserCheck size={12} /> Select Demo Profile:
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {DEMO_ACCOUNTS.map((acc) => (
-              <button
-                key={acc.email}
-                type="button"
-                onClick={() => {
-                  setEmail(acc.email);
-                  setPassword('solusi123');
-                  setError('');
-                }}
-                style={{
-                  background: email === acc.email ? 'rgba(59, 130, 246, 0.2)' : 'rgba(255, 255, 255, 0.05)',
-                  border: `1px solid ${email === acc.email ? '#3b82f6' : 'rgba(255, 255, 255, 0.12)'}`,
-                  color: email === acc.email ? '#60a5fa' : '#cbd5e1',
-                  borderRadius: 6,
-                  padding: '4px 8px',
-                  fontSize: 10,
-                  cursor: 'pointer',
-                  fontWeight: 600,
-                  transition: 'all 0.15s ease'
-                }}
-              >
-                {acc.name}
-              </button>
-            ))}
-          </div>
         </div>
 
         <form onSubmit={submit} className="authForm">

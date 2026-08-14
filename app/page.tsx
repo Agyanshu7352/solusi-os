@@ -193,13 +193,13 @@ export default function App() {
         if (u && u.name) {
           setCurrentUser(u);
         } else {
-          window.location.href = '/login';
+          window.location.replace('/login');
         }
       } catch (e) {
-        window.location.href = '/login';
+        window.location.replace('/login');
       }
     } else {
-      window.location.href = '/login';
+      window.location.replace('/login');
     }
   }, []);
 
@@ -210,7 +210,7 @@ export default function App() {
     try {
       await supabase.auth.signOut();
     } catch (e) {}
-    window.location.href = '/login';
+    window.location.replace('/login');
   };
 
   const handleDelete = async (resource: string, id: string, extraType?: string) => {
