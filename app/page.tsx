@@ -1,2650 +1,2680 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   LayoutDashboard,
-  BriefcaseBusiness,
   Users,
+  ReceiptText,
   Palette,
-  Images,
-  CheckCircle2,
-  ClipboardList,
+  BriefcaseBusiness,
   HardHat,
   AlertTriangle,
-  Boxes,
   Truck,
-  ReceiptText,
+  FileText,
   Wallet,
   ExternalLink,
   Plus,
   Search,
   Bell,
-  FileText,
   Menu,
   X,
-  LogOut,
-  UserPlus,
   RefreshCw,
-  CalendarDays,
-  UserRound
+  Building,
+  ShieldCheck,
+  CheckCircle2,
+  FilePlus,
+  DollarSign,
+  Trash2,
+  Sliders,
+  LogOut
 } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
-type Client = {
-  id: string;
-  name: string;
-  unit_building_name: string | null;
-  unit_number: string | null;
-  phone: string | null;
-  email: string | null;
-};
-
-type Project = {
-  id: string;
-  name: string;
-  client_id: string | null;
-  contract_value: number;
-  approved_budget: number;
-  actual_cost: number;
-  progress: number;
-  status: string;
-  start_date: string | null;
-  due_date: string | null;
-};
-
-type Milestone = {
-  id: string;
-  project_id: string;
-  phase: string;
-  name: string;
-  planned_start: string | null;
-  planned_finish: string | null;
-  actual_finish: string | null;
-  status: string;
-  progress: number;
-  responsible_person: string | null;
-  notes: string | null;
-  sort_order: number;
-};
-
-type MilestoneTask = {
-  id: string;
-  milestone_id: string;
-  task_name: string;
-  responsible_person: string | null;
-  status: string;
-  sort_order: number;
-  completed_at: string | null;
-  created_at?: string;
-};
-
-const nav = [
-  ['Command Center', LayoutDashboard, 'home'],
-  ['Sales & CRM', Users, 'sales'],
-  ['Quotations', ReceiptText, 'quotations'],
-  ['Design Studio', Palette, 'design'],
-  ['Material Library', Images, 'library'],
-  ['Moodboards', Images, 'moodboards'],
-  ['Client Approvals', CheckCircle2, 'approvals'],
-  ['Projects', BriefcaseBusiness, 'projects'],
-  ['Tasks & SOP', ClipboardList, 'tasks'],
-  ['Site Control', HardHat, 'site'],
-  ['Labour', Users, 'labour'],
-  ['Issues & Snags', AlertTriangle, 'issues'],
-  ['Inventory', Boxes, 'inventory'],
-  ['Procurement', Truck, 'procurement'],
-  ['BOQ & Variations', FileText, 'boq'],
-  ['Finance & P&L', Wallet, 'finance'],
-  ['Client Portal', ExternalLink, 'portal']
+/* ==========================================================================
+   NAVIGATION CONFIGURATION (Clean Product Modules)
+   ========================================================================== */
+const navItems = [
+  { key: 'dashboard', label: 'Command Center', icon: LayoutDashboard },
+  { key: 'crm', label: 'Sales & CRM', icon: Users },
+  { key: 'quotations', label: 'Quotations & BOQ', icon: ReceiptText },
+  { key: 'design', label: 'Design Studio', icon: Palette },
+  { key: 'projects', label: 'Projects & Milestones', icon: BriefcaseBusiness },
+  { key: 'site', label: 'Site Control', icon: HardHat },
+  { key: 'labour', label: 'Labour Management', icon: Users },
+  { key: 'procurement', label: 'Material & Procurement', icon: Truck },
+  { key: 'snags', label: 'Issues & Snags', icon: AlertTriangle },
+  { key: 'variations', label: 'BOQ & Variations', icon: FileText },
+  { key: 'finance', label: 'Finance & P&L', icon: Wallet },
+  { key: 'portal', label: 'Client Portal', icon: ExternalLink }
 ] as const;
 
-const phases = [
-  'Pre-Execution',
-  'Design',
-  'Procurement',
-  'Civil & MEP',
-  'Furniture & Interiors',
-  'Finalisation',
-  'Commercial Closure'
-];
+/* Helper Formatter */
+const money = (n: number) => {
+  if (isNaN(n) || n === null) return '₹0';
+  if (Math.abs(n) >= 10000000) return `₹${(n / 10000000).toFixed(2)}Cr`;
+  if (Math.abs(n) >= 100000) return `₹${(n / 100000).toFixed(1)}L`;
+  return `₹${n.toLocaleString('en-IN')}`;
+};
 
-const milestoneStatuses = [
-  'Pending',
-  'In Progress',
-  'Done',
-  'Delayed',
-  'On Hold'
-];
-
-const [clients, setClients] = useState<Client[]>([]);
-const [projects, setProjects] = useState<Project[]>([]);
-const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-const [milestoneTasks, setMilestoneTasks] = useState<MilestoneTask[]>([]);
-const [error, setError] = useState('');
-
-const money = (n: number) =>
-  `₹${(n / 100000).toFixed(1)}L`;
-
-function Badge({ children }: { children: string }) {
-  const good = [
-    'On Track',
-    'Done',
-    'Paid',
-    'Received',
-    'Approved'
-  ].includes(children);
-
-  const bad = [
-    'Critical',
-    'Delayed',
-    'Overdue',
-    'At Risk'
-  ].includes(children);
+function StatusBadge({ children }: { children: string }) {
+  const good = ['On Track', 'Done', 'Completed', 'Approved', 'Client Approved', 'Delivered', 'Won', 'Active', 'Paid'].includes(children);
+  const bad = ['Critical', 'Delayed', 'Overdue', 'At Risk', 'Lost', 'Rejected', 'High'].includes(children);
+  const warn = ['In Progress', 'Action Taken', 'Open', 'Draft', 'Quotation', 'Design Discussion', 'Pending'].includes(children);
 
   return (
-    <span
-      className={`badge ${
-        good ? 'good' : bad ? 'bad' : 'warn'
-      }`}
-    >
+    <span className={`badge ${good ? 'good' : bad ? 'bad' : warn ? 'warn' : ''}`}>
       {children}
     </span>
   );
 }
 
-function Card({
-  children,
-  className = '',
-  onClick
-}: {
-  children: React.ReactNode;
-  className?: string;
-  onClick?: () => void;
-}) {
-  return (
-    <div
-      className={`card ${className}`}
-      onClick={onClick}
-      style={
-        onClick
-          ? { cursor: 'pointer' }
-          : undefined
-      }
-    >
-      {children}
-    </div>
-  );
-}
+export default function App() {
+  const [currentView, setCurrentView] = useState<string>('dashboard');
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
-function Section({
-  title,
-  sub,
-  action
-}: {
-  title: string;
-  sub?: string;
-  action?: React.ReactNode;
-}) {
-  return (
-    <div className="sectionHead">
-      <div>
-        <h3>{title}</h3>
-        {sub && <span>{sub}</span>}
-      </div>
-      {action}
-    </div>
-  );
-}
+  // Global State fetched from Prisma APIs
+  const [dashboardData, setDashboardData] = useState<any>(null);
+  const [clients, setClients] = useState<any[]>([]);
+  const [leads, setLeads] = useState<any[]>([]);
+  const [projects, setProjects] = useState<any[]>([]);
+  const [selectedProject, setSelectedProject] = useState<any>(null);
+  const [selectedProjectDetail, setSelectedProjectDetail] = useState<any>(null);
+  const [siteReports, setSiteReports] = useState<any[]>([]);
+  const [tradeWorkers, setTradeWorkers] = useState<any[]>([]);
+  const [labourAssignments, setLabourAssignments] = useState<any[]>([]);
+  const [materials, setMaterials] = useState<any[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
+  const [issues, setIssues] = useState<any[]>([]);
+  const [variations, setVariations] = useState<any[]>([]);
+  const [financeEntries, setFinanceEntries] = useState<any[]>([]);
+  const [financeSummary, setFinanceSummary] = useState<any[]>([]);
+  const [approvals, setApprovals] = useState<any[]>([]);
+  const [quotations, setQuotations] = useState<any[]>([]);
+  const [designData, setDesignData] = useState<any>({ designItems: [], moodboards: [] });
 
-export default function Home() {
-  const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-
-  const [view, setView] = useState('home');
-  const [mobile, setMobile] = useState(false);
-  const [query, setQuery] = useState('');
-
-  const [modal, setModal] = useState<
-    'client' | 'project' | 'milestone' | null
-  >(null);
-
-  const [clients, setClients] = useState<Client[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
-
-  const [selectedProject, setSelectedProject] =
-    useState<Project | null>(null);
-
-  const [milestones, setMilestones] =
-    useState<Milestone[]>([]);
-
   const [error, setError] = useState('');
+  const [modalType, setModalType] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [showSearchResults, setShowSearchResults] = useState(false);
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setLoading(false);
+  // Compute global live search results across all modules
+  const searchResults = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [];
+    const results: any[] = [];
+
+    // Search Projects
+    projects.forEach(p => {
+      if (p.name?.toLowerCase().includes(q) || p.code?.toLowerCase().includes(q) || p.location?.toLowerCase().includes(q)) {
+        results.push({ type: 'Project', title: p.name, subtitle: `${p.code} • ${p.location || 'Location N/A'}`, view: 'projects', item: p });
+      }
     });
 
-    const { data } =
-      supabase.auth.onAuthStateChange(
-        (_event, s) => {
-          setSession(s);
-        }
-      );
+    // Search Leads & Clients
+    leads.forEach(l => {
+      if (l.contactName?.toLowerCase().includes(q) || l.companyName?.toLowerCase().includes(q) || l.phone?.includes(q)) {
+        results.push({ type: 'Lead', title: l.contactName, subtitle: `${l.companyName || 'Client'} • ${l.stage}`, view: 'crm', item: l });
+      }
+    });
 
-    return () =>
-      data.subscription.unsubscribe();
+    // Search Quotations & BOQ
+    quotations.forEach(quote => {
+      if (quote.quoteNo?.toLowerCase().includes(q) || quote.title?.toLowerCase().includes(q)) {
+        results.push({ type: 'Quotation', title: quote.quoteNo, subtitle: quote.title, view: 'quotations', item: quote });
+      }
+    });
+
+    // Search Materials & Procurement
+    materials.forEach(m => {
+      if (m.name?.toLowerCase().includes(q) || m.code?.toLowerCase().includes(q) || m.category?.toLowerCase().includes(q)) {
+        results.push({ type: 'Material', title: m.name, subtitle: `${m.code} • ${m.category}`, view: 'procurement', item: m });
+      }
+    });
+
+    // Search Issues & Snags
+    issues.forEach(i => {
+      if (i.title?.toLowerCase().includes(q) || i.category?.toLowerCase().includes(q)) {
+        results.push({ type: 'Issue/Snag', title: i.title, subtitle: `${i.category} • ${i.status}`, view: 'snags', item: i });
+      }
+    });
+
+    return results.slice(0, 8);
+  }, [searchQuery, projects, leads, quotations, materials, issues]);
+
+  // Compute real-time system notifications for Bell icon popover
+  const systemAlerts = useMemo(() => {
+    const alerts: any[] = [];
+
+    approvals.filter((a: any) => a.status === 'Pending').forEach((a: any) => {
+      alerts.push({
+        id: `app-${a.id}`,
+        type: 'Approval',
+        title: `Pending Client Approval: ${a.title}`,
+        subtitle: `Requested for ${a.project?.name || 'Project'}`,
+        badge: 'warn',
+        view: 'portal'
+      });
+    });
+
+    issues.filter((i: any) => i.status !== 'Resolved' && i.status !== 'Closed').forEach((i: any) => {
+      alerts.push({
+        id: `iss-${i.id}`,
+        type: 'Snag',
+        title: `Open Snag: ${i.title}`,
+        subtitle: `Severity: ${i.severity} • ${i.project?.name || 'Site'}`,
+        badge: i.severity === 'Critical' || i.severity === 'High' ? 'bad' : 'warn',
+        view: 'snags'
+      });
+    });
+
+    variations.filter((v: any) => v.status === 'Draft' || v.status === 'Submitted').forEach((v: any) => {
+      alerts.push({
+        id: `var-${v.id}`,
+        type: 'Variation',
+        title: `Variation Request ${v.variationNo}`,
+        subtitle: `${v.title} (+₹${(v.priceImpact || 0).toLocaleString()})`,
+        badge: 'warn',
+        view: 'variations'
+      });
+    });
+
+    return alerts;
+  }, [approvals, issues, variations]);
+
+  // Read current user profile from localStorage or redirect to /login
+  useEffect(() => {
+    const saved = typeof window !== 'undefined' ? localStorage.getItem('solusi_user') : null;
+    if (saved) {
+      try {
+        const u = JSON.parse(saved);
+        if (u && u.name) {
+          setCurrentUser(u);
+        } else {
+          window.location.href = '/login';
+        }
+      } catch (e) {
+        window.location.href = '/login';
+      }
+    } else {
+      window.location.href = '/login';
+    }
   }, []);
 
-  useEffect(() => {
-    if (session) {
-      loadData();
+  const handleLogout = async () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('solusi_user');
     }
-  }, [session]);
-
-  async function loadData() {
-    setError('');
-
-    const [
-      { data: c, error: ce },
-      { data: p, error: pe }
-    ] = await Promise.all([
-      supabase
-        .from('clients')
-        .select('*')
-        .order('created_at', {
-          ascending: false
-        }),
-
-      supabase
-        .from('projects')
-        .select('*')
-        .order('created_at', {
-          ascending: false
-        })
-    ]);
-
-    if (ce || pe) {
-      setError(
-        ce?.message ||
-          pe?.message ||
-          'Unable to load data'
-      );
-      return;
-    }
-
-    setClients(c || []);
-    setProjects(p || []);
-  }
-
-  async function loadMilestones(
-    projectId: string
-  ) {
-    setError('');
-
-    const { data, error } = await supabase
-      .from('project_milestones')
-      .select('*')
-      .eq('project_id', projectId)
-      .order('sort_order', {
-        ascending: true
-      })
-      .order('created_at', {
-        ascending: true
-      });
-
-    if (error) {
-      setError(error.message);
-      return;
-    }
-
-    setMilestones(data || []);
-  }
-
-  async function signOut() {
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {}
     window.location.href = '/login';
-  }
+  };
 
-  async function addClient(v: {
-    name: string;
-    unit_building_name: string;
-    unit_number: string;
-    phone: string;
-    email: string;
-  }) {
-    const { data, error } =
-      await supabase
-        .from('clients')
-        .insert(v)
-        .select('*')
-        .single();
+  const handleDelete = async (resource: string, id: string, extraType?: string) => {
+    if (!confirm('Are you sure you want to delete this record?')) return;
+    try {
+      let url = `/api/${resource}?id=${id}`;
+      if (extraType) url += `&type=${extraType}`;
+      const res = await fetch(url, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to delete record');
+      await loadAllData();
+    } catch (err: any) {
+      alert(err.message || 'Error deleting record');
+    }
+  };
 
-    if (error) throw error;
+  // Load all module data on mount & refetch on action
+  useEffect(() => {
+    loadAllData();
+  }, []);
 
-    setClients(x => [data, ...x]);
-    setModal(null);
-  }
-
-  async function addProject(v: {
-    name: string;
-    client_id: string;
-    contract_value: number;
-    approved_budget: number;
-    start_date: string;
-    due_date: string;
-  }) {
-    const { data, error } =
-      await supabase
-        .from('projects')
-        .insert({
-          ...v,
-          actual_cost: 0,
-          progress: 0,
-          status: 'On Track'
-        })
-        .select('*')
-        .single();
-
-    if (error) throw error;
-
-    setProjects(x => [data, ...x]);
-    setModal(null);
-  }
-
-  async function addMilestone(v: {
-    project_id: string;
-    phase: string;
-    name: string;
-    planned_start: string;
-    planned_finish: string;
-    status: string;
-    progress: number;
-    responsible_person: string;
-    notes: string;
-  }) {
-    const nextOrder =
-      milestones.length > 0
-        ? Math.max(
-            ...milestones.map(
-              m => Number(m.sort_order) || 0
-            )
-          ) + 1
-        : 0;
-
-    const { data, error } =
-      await supabase
-        .from('project_milestones')
-        .insert({
-          ...v,
-          actual_finish: null,
-          sort_order: nextOrder
-        })
-        .select('*')
-        .single();
-
-    if (error) throw error;
-
-    setMilestones(x => [...x, data]);
-    setModal(null);
-  }
-
-  async function updateMilestone(
-    id: string,
-    updates: Partial<Milestone>
-  ) {
+  async function loadAllData() {
+    setLoading(true);
     setError('');
+    try {
+      const [
+        dashRes,
+        clientRes,
+        leadRes,
+        projRes,
+        siteRes,
+        labourRes,
+        procRes,
+        issueRes,
+        varRes,
+        finRes,
+        appRes,
+        quoRes,
+        desRes
+      ] = await Promise.all([
+        fetch('/api/dashboard').then(r => r.json()),
+        fetch('/api/clients').then(r => r.json()),
+        fetch('/api/leads').then(r => r.json()),
+        fetch('/api/projects').then(r => r.json()),
+        fetch('/api/site-reports').then(r => r.json()),
+        fetch('/api/labour').then(r => r.json()),
+        fetch('/api/procurement').then(r => r.json()),
+        fetch('/api/issues').then(r => r.json()),
+        fetch('/api/variations').then(r => r.json()),
+        fetch('/api/finance').then(r => r.json()),
+        fetch('/api/approvals').then(r => r.json()),
+        fetch('/api/quotations').then(r => r.json()),
+        fetch('/api/design').then(r => r.json())
+      ]);
 
-    const { data, error } =
-      await supabase
-        .from('project_milestones')
-        .update(updates)
-        .eq('id', id)
-        .select('*')
-        .single();
-
-    if (error) {
-      setError(error.message);
-      return;
+      setDashboardData(dashRes);
+      setClients(clientRes || []);
+      setLeads(leadRes || []);
+      setProjects(projRes || []);
+      setSiteReports(siteRes || []);
+      if (labourRes) {
+        setTradeWorkers(labourRes.workers || []);
+        setLabourAssignments(labourRes.assignments || []);
+      }
+      if (procRes) {
+        setMaterials(procRes.materials || []);
+        setPurchaseOrders(procRes.purchaseOrders || []);
+      }
+      setIssues(issueRes || []);
+      setVariations(varRes || []);
+      if (finRes) {
+        setFinanceEntries(finRes.entries || []);
+        setFinanceSummary(finRes.summary || []);
+      }
+      setApprovals(appRes || []);
+      setQuotations(quoRes || []);
+      if (desRes) {
+        setDesignData(desRes);
+      }
+    } catch (err: any) {
+      console.error('Error loading Solusi OS Prisma data:', err);
+      setError('Could not connect to database. Make sure Prisma API server is active.');
+    } finally {
+      setLoading(false);
     }
-
-    setMilestones(x =>
-      x.map(m =>
-        m.id === id ? data : m
-      )
-    );
   }
 
-  async function deleteMilestone(id: string) {
-    const confirmed =
-      window.confirm(
-        'Delete this milestone?'
-      );
-
-    if (!confirmed) return;
-
-    const { error } =
-      await supabase
-        .from('project_milestones')
-        .delete()
-        .eq('id', id);
-
-    if (error) {
-      setError(error.message);
-      return;
+  // Load deep single project detail when clicked
+  async function openProjectDetail(proj: any) {
+    setSelectedProject(proj);
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/projects?id=${proj.id}`).then(r => r.json());
+      setSelectedProjectDetail(res);
+    } catch (e: any) {
+      console.error('Error loading project detail:', e);
+    } finally {
+      setLoading(false);
     }
-
-    setMilestones(x =>
-      x.filter(m => m.id !== id)
-    );
   }
 
-  const totals = useMemo(
-    () => ({
-      book: projects.reduce(
-        (a, p) =>
-          a +
-          Number(
-            p.contract_value || 0
-          ),
-        0
-      ),
+  const activeNavLabel = navItems.find(n => n.key === currentView)?.label || 'Command Center';
 
-      cost: projects.reduce(
-        (a, p) =>
-          a +
-          Number(
-            p.actual_cost || 0
-          ),
-        0
-      )
-    }),
-    [projects]
-  );
-
-  if (loading) {
+  if (!currentUser || (loading && !dashboardData)) {
     return (
-      <div className="loadingScreen">
-        Loading Solusi OS…
+      <div className="loadingScreen" style={{ position: 'fixed', inset: 0, zIndex: 99999, background: '#0b1220', color: '#fff' }}>
+        <RefreshCw className="animate-spin" size={24} style={{ marginBottom: 12 }} />
+        Authenticating Solusi OS...
       </div>
     );
   }
-
-  if (!session) {
-    if (
-      typeof window !==
-      'undefined'
-    ) {
-      window.location.replace(
-        '/login'
-      );
-    }
-
-    return null;
-  }
-
-  const activeLabel =
-    nav.find(
-      x => x[2] === view
-    )?.[0] ||
-    'Command Center';
 
   return (
     <div className="app">
-      <aside
-        className={`sidebar ${
-          mobile ? 'show' : ''
-        }`}
-      >
+      {/* SIDEBAR NAVIGATION */}
+      <aside className={`sidebar ${mobileNavOpen ? 'show' : ''}`}>
         <div className="brand">
-          <div className="mark">
-            S
-          </div>
-
+          <div className="mark">S</div>
           <div>
             <b>solusi</b>
-            <small>
-              OPERATING SYSTEM
-            </small>
+            <small>OPERATING SYSTEM</small>
           </div>
-
-          <button
-            className="mobileClose"
-            onClick={() =>
-              setMobile(false)
-            }
-          >
+          <button className="mobileClose" onClick={() => setMobileNavOpen(false)}>
             <X size={18} />
           </button>
         </div>
 
         <div className="workspace">
-          <small>
-            WORKSPACE
-          </small>
-
+          <small>COMMERCIAL INTERIOR OS</small>
           <b>Solusi Design</b>
-
-          <span>
-            Commercial Interiors
-          </span>
+          <span>Commercial Interiors</span>
         </div>
 
         <nav>
-          {nav.map(
-            ([
-              label,
-              Icon,
-              key
-            ]) => (
+          {navItems.map(item => {
+            const Icon = item.icon;
+            return (
               <button
-                key={key}
-                className={
-                  view === key
-                    ? 'active'
-                    : ''
-                }
+                key={item.key}
+                className={currentView === item.key ? 'active' : ''}
                 onClick={() => {
-                  setView(key);
-                  setSelectedProject(
-                    null
-                  );
-                  setMilestones([]);
-                  setMobile(false);
+                  setCurrentView(item.key);
+                  setSelectedProject(null);
+                  setSelectedProjectDetail(null);
+                  setMobileNavOpen(false);
                 }}
               >
                 <Icon size={16} />
-                <span>
-                  {label}
-                </span>
+                <span>{item.label}</span>
               </button>
-            )
-          )}
+            );
+          })}
         </nav>
 
         <div className="user">
-          <div className="avatar">
-            SH
-          </div>
-
+          <div className="avatar">{currentUser?.avatar || 'SC'}</div>
           <div>
-            <b>
-              {session.user.email?.split(
-                '@'
-              )[0] ||
-                'Owner'}
-            </b>
-
-            <small>
-              Authenticated user
-            </small>
+            <b>{currentUser?.name || 'Shubham Chaudhary'}</b>
+            <small>{currentUser?.role || 'Commercial Director'}</small>
           </div>
-
-          <button
-            className="iconBtn dark"
-            title="Sign out"
-            onClick={signOut}
-          >
+          <button className="iconBtn dark" title="Refresh Data" onClick={loadAllData}>
+            <RefreshCw size={14} />
+          </button>
+          <button className="iconBtn dark" title="Sign Out" onClick={handleLogout} style={{ color: '#ef4444' }}>
             <LogOut size={14} />
           </button>
         </div>
       </aside>
 
+      {/* MAIN CONTENT AREA */}
       <main>
         <header>
           <div className="headerTitle">
-            <button
-              className="hamb"
-              onClick={() =>
-                setMobile(true)
-              }
-            >
+            <button className="hamb" onClick={() => setMobileNavOpen(true)}>
               <Menu size={20} />
             </button>
-
-            <div className="eyebrow">
-              SOLUSI DESIGN /{' '}
-              {activeLabel.toUpperCase()}
-            </div>
-
-            <h1>
-              {activeLabel}
-            </h1>
+            <div className="eyebrow">SOLUSI DESIGN / {activeNavLabel.toUpperCase()}</div>
+            <h1>{activeNavLabel}</h1>
           </div>
 
           <div className="headerTools">
-            <div className="search">
+            <div className="search" style={{ position: 'relative' }}>
               <Search size={15} />
-
               <input
-                value={query}
-                onChange={e =>
-                  setQuery(
-                    e.target.value
-                  )
-                }
-                placeholder="Search clients, projects…"
+                value={searchQuery}
+                onChange={e => {
+                  setSearchQuery(e.target.value);
+                  setShowSearchResults(true);
+                }}
+                onFocus={() => setShowSearchResults(true)}
+                placeholder="Search leads, projects, BOQ, site logs..."
               />
+              {searchQuery.trim() !== '' && (
+                <button
+                  onClick={() => {
+                    setSearchQuery('');
+                    setShowSearchResults(false);
+                  }}
+                  style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: 2, display: 'flex', alignItems: 'center' }}
+                >
+                  <X size={13} />
+                </button>
+              )}
+
+              {/* SEARCH OVERLAY DROPDOWN */}
+              {showSearchResults && searchQuery.trim() !== '' && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 'calc(100% + 8px)',
+                    left: 0,
+                    right: 0,
+                    minWidth: 320,
+                    background: '#0f172a',
+                    border: '1px solid rgba(255,255,255,0.15)',
+                    borderRadius: 12,
+                    boxShadow: '0 20px 25px -5px rgba(0,0,0,0.5), 0 8px 10px -6px rgba(0,0,0,0.5)',
+                    zIndex: 100,
+                    overflow: 'hidden'
+                  }}
+                >
+                  <div style={{ padding: '8px 12px', fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Search Results ({searchResults.length})</span>
+                    <button
+                      onClick={() => setShowSearchResults(false)}
+                      style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 9 }}
+                    >
+                      Close
+                    </button>
+                  </div>
+                  {searchResults.length === 0 ? (
+                    <div style={{ padding: 16, fontSize: 12, color: '#64748b', textAlign: 'center' }}>
+                      No records matching "{searchQuery}"
+                    </div>
+                  ) : (
+                    <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+                      {searchResults.map((res: any, idx: number) => (
+                        <div
+                          key={idx}
+                          onClick={() => {
+                            setCurrentView(res.view);
+                            if (res.view === 'projects' && res.item) {
+                              openProjectDetail(res.item);
+                            }
+                            setShowSearchResults(false);
+                            setSearchQuery('');
+                          }}
+                          style={{
+                            padding: '10px 14px',
+                            borderBottom: '1px solid rgba(255,255,255,0.05)',
+                            cursor: 'pointer',
+                            transition: 'background 0.2s ease',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between'
+                          }}
+                          onMouseOver={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
+                          onMouseOut={e => (e.currentTarget.style.background = 'transparent')}
+                        >
+                          <div>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: '#f8fafc' }}>{res.title}</div>
+                            <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>{res.subtitle}</div>
+                          </div>
+                          <span className="badge" style={{ fontSize: 9 }}>{res.type}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
-            <button className="iconBtn">
-              <Bell size={16} />
+            {/* NOTIFICATIONS BELL POP-OVER */}
+            <div style={{ position: 'relative' }}>
+              <button
+                className="iconBtn"
+                title="Alerts & Notifications"
+                onClick={() => setShowNotifications(!showNotifications)}
+                style={{ position: 'relative' }}
+              >
+                <Bell size={16} />
+                {systemAlerts.length > 0 && (
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: -2,
+                      right: -2,
+                      width: 14,
+                      height: 14,
+                      borderRadius: '50%',
+                      background: '#ef4444',
+                      color: '#fff',
+                      fontSize: 8,
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                  >
+                    {systemAlerts.length}
+                  </span>
+                )}
+              </button>
+
+              {showNotifications && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 'calc(100% + 8px)',
+                    right: 0,
+                    width: 340,
+                    background: '#0f172a',
+                    border: '1px solid rgba(255,255,255,0.15)',
+                    borderRadius: 12,
+                    boxShadow: '0 20px 25px -5px rgba(0,0,0,0.5), 0 8px 10px -6px rgba(0,0,0,0.5)',
+                    zIndex: 100,
+                    overflow: 'hidden'
+                  }}
+                >
+                  <div style={{ padding: '12px 14px', background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <b style={{ fontSize: 12, color: '#f8fafc' }}>Alerts & Notifications ({systemAlerts.length})</b>
+                    <button
+                      style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 10, cursor: 'pointer' }}
+                      onClick={() => setShowNotifications(false)}
+                    >
+                      Close
+                    </button>
+                  </div>
+
+                  <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+                    {systemAlerts.length === 0 ? (
+                      <div style={{ padding: 20, fontSize: 12, color: '#64748b', textAlign: 'center' }}>
+                        🎉 All system alerts clear! No pending notifications.
+                      </div>
+                    ) : (
+                      systemAlerts.map((alt: any) => (
+                        <div
+                          key={alt.id}
+                          onClick={() => {
+                            setCurrentView(alt.view);
+                            setShowNotifications(false);
+                          }}
+                          style={{
+                            padding: '10px 14px',
+                            borderBottom: '1px solid rgba(255,255,255,0.05)',
+                            cursor: 'pointer',
+                            transition: 'background 0.2s ease'
+                          }}
+                          onMouseOver={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
+                          onMouseOut={e => (e.currentTarget.style.background = 'transparent')}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                            <span className={`badge ${alt.badge}`} style={{ fontSize: 8 }}>{alt.type}</span>
+                            <span style={{ fontSize: 9, color: '#64748b' }}>Action Needed</span>
+                          </div>
+                          <div style={{ fontSize: 11, fontWeight: 600, color: '#e2e8f0' }}>{alt.title}</div>
+                          <div style={{ fontSize: 9, color: '#94a3b8', marginTop: 2 }}>{alt.subtitle}</div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <button
+              className="iconBtn"
+              title="Sign Out"
+              onClick={handleLogout}
+              style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '6px 12px', fontSize: '11px', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.3)' }}
+            >
+              <LogOut size={13} />
+              <span>Log Out</span>
             </button>
 
-            {(view ===
-              'projects' ||
-              view === 'home') && (
-              <button
-                className="primary"
-                onClick={() =>
-                  setModal(
-                    view ===
-                      'projects'
-                      ? 'project'
-                      : 'client'
-                  )
-                }
-              >
-                <Plus size={15} />
-                Create
-              </button>
-            )}
+            {/* TOP RIGHT ADD BUTTON FOR ANY VIEW */}
+            <button className="primary" onClick={() => setModalType(currentView)}>
+              <Plus size={15} />
+              Add Record
+            </button>
           </div>
         </header>
 
         <section className="page">
           {error && (
             <div className="authError pageAlert">
-              {error}
-
-              <button
-                className="small"
-                onClick={() => {
-                  if (
-                    selectedProject
-                  ) {
-                    loadMilestones(
-                      selectedProject.id
-                    );
-                  } else {
-                    loadData();
-                  }
-                }}
-              >
-                <RefreshCw size={12} />
-                Retry
+              <span>{error}</span>
+              <button className="small" onClick={loadAllData}>
+                <RefreshCw size={12} /> Retry
               </button>
             </div>
           )}
 
-          {view === 'home' ? (
-            <Dashboard
+          {/* VIEW ROUTER */}
+          {currentView === 'dashboard' && (
+            <DashboardView
+              metrics={dashboardData?.metrics}
               projects={projects}
-              clients={clients}
-              totals={totals}
+              leads={leads}
+              siteReports={siteReports}
+              issues={issues}
+              onNavigate={setCurrentView}
+              onOpenProject={openProjectDetail}
+              onAddRecord={() => setModalType('dashboard')}
             />
-          ) : view ===
-            'projects' ? (
-            selectedProject ? (
-              <ProjectDetail
-                project={
-                  selectedProject
-                }
-                clients={clients}
-                milestones={
-                  milestones
-                }
-                onBack={() => {
-                  setSelectedProject(
-                    null
-                  );
-                  setMilestones([]);
-                }}
-                onAddMilestone={() => {
-                  setModal(
-                    'milestone'
-                  );
-                }}
-                onUpdateMilestone={
-                  updateMilestone
-                }
-                onDeleteMilestone={
-                  deleteMilestone
-                }
+          )}
+
+          {currentView === 'crm' && (
+            <CrmView
+              leads={leads}
+              clients={clients}
+              query={searchQuery}
+              onRefresh={loadAllData}
+              onAddLead={() => setModalType('crm')}
+              onDelete={handleDelete}
+            />
+          )}
+
+          {currentView === 'quotations' && (
+            <QuotationsView
+              quotations={quotations}
+              projects={projects}
+              leads={leads}
+              clients={clients}
+              query={searchQuery}
+              onRefresh={loadAllData}
+              onAddQuotation={() => setModalType('quotations')}
+              onDelete={handleDelete}
+            />
+          )}
+
+          {currentView === 'design' && (
+            <DesignStudioView
+              designItems={designData.designItems || []}
+              moodboards={designData.moodboards || []}
+              projects={projects}
+              approvals={approvals}
+              onRefresh={loadAllData}
+              onAddDesign={() => setModalType('design')}
+              onDelete={handleDelete}
+            />
+          )}
+
+          {currentView === 'projects' && (
+            selectedProjectDetail ? (
+              <ProjectDetailView
+                project={selectedProjectDetail}
+                onBack={() => setSelectedProjectDetail(null)}
+                onRefresh={() => openProjectDetail(selectedProject)}
               />
             ) : (
-              <Projects
+              <ProjectsMasterView
                 projects={projects}
                 clients={clients}
-                query={query}
-                onAdd={() =>
-                  setModal(
-                    'project'
-                  )
-                }
-                onOpen={async p => {
-                  setSelectedProject(
-                    p
-                  );
-                  await loadMilestones(
-                    p.id
-                  );
-                }}
+                query={searchQuery}
+                onOpenProject={openProjectDetail}
+                onAddProject={() => setModalType('projects')}
+                onDelete={handleDelete}
               />
             )
-          ) : view ===
-            'sales' ? (
-            <Clients
-              clients={clients}
-              query={query}
-              onAdd={() =>
-                setModal('client')
-              }
+          )}
+
+          {currentView === 'site' && (
+            <SiteControlView
+              siteReports={siteReports}
+              projects={projects}
+              onAddReport={() => setModalType('site')}
+              onDelete={handleDelete}
             />
-          ) : (
-            <Placeholder
-              title={activeLabel}
+          )}
+
+          {currentView === 'labour' && (
+            <LabourView
+              workers={tradeWorkers}
+              assignments={labourAssignments}
+              projects={projects}
+              onRefresh={loadAllData}
+              onAddLabour={() => setModalType('labour')}
+              onDelete={handleDelete}
+            />
+          )}
+
+          {currentView === 'procurement' && (
+            <ProcurementView
+              materials={materials}
+              purchaseOrders={purchaseOrders}
+              projects={projects}
+              onRefresh={loadAllData}
+              onAddProcurement={() => setModalType('procurement')}
+              onDelete={handleDelete}
+            />
+          )}
+
+          {currentView === 'snags' && (
+            <SnagsView
+              issues={issues}
+              projects={projects}
+              onRefresh={loadAllData}
+              onAddSnag={() => setModalType('snags')}
+              onDelete={handleDelete}
+            />
+          )}
+
+          {currentView === 'variations' && (
+            <VariationsView
+              variations={variations}
+              projects={projects}
+              onRefresh={loadAllData}
+              onAddVariation={() => setModalType('variations')}
+              onDelete={handleDelete}
+            />
+          )}
+
+          {currentView === 'finance' && (
+            <FinanceView
+              summary={financeSummary}
+              entries={financeEntries}
+              projects={projects}
+              onRefresh={loadAllData}
+              onAddFinance={() => setModalType('finance')}
+              onDelete={handleDelete}
+            />
+          )}
+
+          {currentView === 'portal' && (
+            <ClientPortalView
+              projects={projects}
+              approvals={approvals}
+              siteReports={siteReports}
+              onRefresh={loadAllData}
+              onAddApproval={() => setModalType('portal')}
+              onDelete={handleDelete}
             />
           )}
         </section>
       </main>
 
-      {modal === 'client' && (
-        <ClientModal
-          close={() =>
-            setModal(null)
-          }
-          save={addClient}
+      {/* CREATION MODALS FOR ALL VIEWS */}
+      {modalType === 'dashboard' && (
+        <DashboardSelectorModal
+          onSelect={(type: string) => setModalType(type)}
+          onClose={() => setModalType(null)}
         />
       )}
-
-      {modal === 'project' && (
-        <ProjectModal
+      {(modalType === 'crm' || modalType === 'lead') && (
+        <CreateLeadModal
           clients={clients}
-          close={() =>
-            setModal(null)
-          }
-          save={addProject}
+          onClose={() => setModalType(null)}
+          onSuccess={loadAllData}
         />
       )}
-
-      {modal === 'milestone' &&
-        selectedProject && (
-          <MilestoneModal
-            project={
-              selectedProject
-            }
-            close={() =>
-              setModal(null)
-            }
-            save={addMilestone}
-          />
-        )}
+      {modalType === 'projects' && (
+        <CreateProjectModal
+          clients={clients}
+          onClose={() => setModalType(null)}
+          onSuccess={loadAllData}
+        />
+      )}
+      {modalType === 'site' && (
+        <CreateSiteReportModal
+          projects={projects}
+          onClose={() => setModalType(null)}
+          onSuccess={loadAllData}
+        />
+      )}
+      {modalType === 'quotations' && (
+        <CreateQuotationModal
+          projects={projects}
+          clients={clients}
+          onClose={() => setModalType(null)}
+          onSuccess={loadAllData}
+        />
+      )}
+      {modalType === 'design' && (
+        <CreateDesignModal
+          projects={projects}
+          onClose={() => setModalType(null)}
+          onSuccess={loadAllData}
+        />
+      )}
+      {modalType === 'labour' && (
+        <CreateLabourModal
+          projects={projects}
+          onClose={() => setModalType(null)}
+          onSuccess={loadAllData}
+        />
+      )}
+      {modalType === 'procurement' && (
+        <CreateProcurementModal
+          projects={projects}
+          onClose={() => setModalType(null)}
+          onSuccess={loadAllData}
+        />
+      )}
+      {(modalType === 'snags' || modalType === 'issues') && (
+        <CreateSnagModal
+          projects={projects}
+          onClose={() => setModalType(null)}
+          onSuccess={loadAllData}
+        />
+      )}
+      {modalType === 'variations' && (
+        <CreateVariationModal
+          projects={projects}
+          onClose={() => setModalType(null)}
+          onSuccess={loadAllData}
+        />
+      )}
+      {modalType === 'finance' && (
+        <CreateFinanceModal
+          projects={projects}
+          onClose={() => setModalType(null)}
+          onSuccess={loadAllData}
+        />
+      )}
+      {modalType === 'portal' && (
+        <CreateApprovalModal
+          projects={projects}
+          onClose={() => setModalType(null)}
+          onSuccess={loadAllData}
+        />
+      )}
     </div>
   );
 }
 
-/* =========================
-   DASHBOARD
-========================= */
-
-function Dashboard({
+/* ==========================================================================
+   MODULE 1: DASHBOARD VIEW
+   ========================================================================== */
+function DashboardView({
+  metrics,
   projects,
-  clients,
-  totals
-}: {
-  projects: Project[];
-  clients: Client[];
-  totals: {
-    book: number;
-    cost: number;
-  };
-}) {
+  leads,
+  siteReports,
+  issues,
+  onNavigate,
+  onOpenProject,
+  onAddRecord
+}: any) {
   return (
-    <>
-      <div className="welcome">
-        <div>
-          <h2>
-            Good evening, Shubh.
-          </h2>
-
-          <p>
-            Your live operating view
-            — connected to Supabase.
-          </p>
+    <div>
+      <div className="hero">
+        <h2>Commercial Interior Design Operating System</h2>
+        <p>
+          Control center for Solusi Design. Management across Sales, CRM, Design Studio, 
+          Milestone Checklists, Site Control, BOQ Variations, Procurement & P&L.
+        </p>
+        <div className="heroMetrics">
+          <div>
+            <small>TOTAL CONTRACT VALUE</small>
+            <b>{money(metrics?.totalContractValue || 0)}</b>
+          </div>
+          <div>
+            <small>TOTAL REVENUE COLLECTED</small>
+            <b>{money(metrics?.totalRevenue || 0)}</b>
+          </div>
+          <div>
+            <small>GROSS PROFIT MARGIN</small>
+            <b>{metrics?.profitMargin || 0}%</b>
+          </div>
         </div>
-
-        <span className="date">
-          Live data •{' '}
-          {projects.length} projects •{' '}
-          {clients.length} clients
-        </span>
       </div>
 
-      <div className="kpis grid5">
-        <Kpi
-          title="PROJECT BOOK"
-          value={money(
-            totals.book
-          )}
-          note={`${projects.length} active projects`}
-        />
+      <div className="grid4" style={{ marginTop: 13 }}>
+        <div className="card kpi">
+          <div className="kpiTop">
+            <span>ACTIVE PROJECTS</span>
+            <Building size={16} />
+          </div>
+          <strong>{metrics?.projectsCount || 0}</strong>
+          <small className="goodText">Project Execution</small>
+        </div>
 
-        <Kpi
-          title="ACTUAL COST"
-          value={money(
-            totals.cost
-          )}
-          note="From project records"
-        />
+        <div className="card kpi">
+          <div className="kpiTop">
+            <span>CRM LEADS PIPELINE</span>
+            <Users size={16} />
+          </div>
+          <strong>{metrics?.leadsCount || 0}</strong>
+          <small>Sales Funnel</small>
+        </div>
 
-        <Kpi
-          title="GROSS PROFIT"
-          value={money(
-            totals.book -
-              totals.cost
-          )}
-          note="Contract value − actual cost"
-          good
-        />
+        <div className="card kpi">
+          <div className="kpiTop">
+            <span>OPEN SNAGS & ISSUES</span>
+            <AlertTriangle size={16} />
+          </div>
+          <strong className={metrics?.openIssuesCount > 0 ? 'badText' : ''}>{metrics?.openIssuesCount || 0}</strong>
+          <small>Site Quality</small>
+        </div>
 
-        <Kpi
-          title="CLIENTS"
-          value={String(
-            clients.length
-          )}
-          note="CRM records"
-        />
-
-        <Kpi
-          title="PROJECTS"
-          value={String(
-            projects.length
-          )}
-          note="Live database"
-        />
+        <div className="card kpi">
+          <div className="kpiTop">
+            <span>CLIENT MASTERS</span>
+            <ShieldCheck size={16} />
+          </div>
+          <strong>{metrics?.clientsCount || 0}</strong>
+          <small className="goodText">Client Directory</small>
+        </div>
       </div>
 
       <div className="twoCols">
-        <Card>
-          <Section
-            title="Project Command"
-            sub="Live project records"
-          />
-
-          {projects.length ===
-          0 ? (
-            <Empty text="Create your first project." />
-          ) : (
-            projects
-              .slice(0, 8)
-              .map(p => (
-                <div
-                  className="project"
-                  key={p.id}
-                >
-                  <div className="projectTop">
-                    <b>
-                      {p.name}
-                    </b>
-
-                    <Badge>
-                      {p.status}
-                    </Badge>
-                  </div>
-
-                  <small>
-                    {clientNameLocal(
-                      p.client_id,
-                      clients
-                    )}{' '}
-                    • {p.progress}%
-                    complete
-                  </small>
-
-                  <div className="bar">
-                    <i
-                      style={{
-                        width: `${p.progress}%`
-                      }}
-                    />
-                  </div>
-
-                  <div className="projectFoot">
-                    <span>
-                      Budget{' '}
-                      {money(
-                        Number(
-                          p.approved_budget ||
-                            0
-                        )
-                      )}
-                    </span>
-
-                    <b>
-                      {money(
-                        Number(
-                          p.contract_value ||
-                            0
-                        ) -
-                          Number(
-                            p.actual_cost ||
-                              0
-                          )
-                      )}{' '}
-                      GP
-                    </b>
-                  </div>
-                </div>
-              ))
-          )}
-        </Card>
-
-        <Card>
-          <Section
-            title="System foundation"
-            sub="Now connected"
-          />
+        {/* Active Projects Tracker */}
+        <div className="card">
+          <div className="sectionHead">
+            <div>
+              <h3>Active Projects & Execution Progress</h3>
+              <span>Project Execution & Progress</span>
+            </div>
+            <button className="small" onClick={() => onNavigate('projects')}>View All</button>
+          </div>
 
           <div className="list">
-            <div className="listItem">
-              <UserPlus
-                size={14}
-              />
-
-              <div>
-                <b>
-                  Clients
-                </b>
-
-                <small>
-                  CRUD +
-                  search-ready
-                </small>
+            {projects.map((p: any) => (
+              <div key={p.id} className="project" style={{ cursor: 'pointer' }} onClick={() => onOpenProject(p)}>
+                <div className="projectTop">
+                  <b>{p.name}</b>
+                  <StatusBadge>{p.status}</StatusBadge>
+                </div>
+                <small>{p.location || 'Gurugram/Mumbai Office Fitout'} • Contract: {money(p.contractValue)}</small>
+                <div className="bar">
+                  <i style={{ width: `${p.progress}%` }} />
+                </div>
+                <div className="projectFoot">
+                  <span>Progress: {p.progress}%</span>
+                  <b>Cost Spent: {money(p.actualCost)}</b>
+                </div>
               </div>
-            </div>
-
-            <div className="listItem">
-              <BriefcaseBusiness
-                size={14}
-              />
-
-              <div>
-                <b>
-                  Projects
-                </b>
-
-                <small>
-                  Linked to
-                  clients
-                </small>
-              </div>
-            </div>
-
-            <div className="listItem">
-              <CheckCircle2
-                size={14}
-              />
-
-              <div>
-                <b>
-                  Milestones
-                </b>
-
-                <small>
-                  Project
-                  execution
-                  tracking
-                </small>
-              </div>
-            </div>
-
-            <div className="listItem">
-              <ShieldDot />
-
-              <div>
-                <b>
-                  Authentication
-                </b>
-
-                <small>
-                  Supabase
-                  session
-                </small>
-              </div>
-            </div>
+            ))}
           </div>
-        </Card>
+        </div>
+
+        {/* Live Site Stream */}
+        <div className="card">
+          <div className="sectionHead">
+            <div>
+              <h3>Daily Site Reports Stream</h3>
+              <span>Supervisor Site Feed</span>
+            </div>
+            <button className="small" onClick={() => onNavigate('site')}>Site Control</button>
+          </div>
+
+          <div className="list">
+            {siteReports.slice(0, 3).map((r: any) => (
+              <div key={r.id} className="listItem" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <b>{r.project?.name}</b>
+                  <small>{new Date(r.reportDate).toLocaleDateString()}</small>
+                </div>
+                <small style={{ margin: '4px 0', color: '#4a5568' }}>{r.workCompleted}</small>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <span className="badge good">{r.labourPresent} Labour Present</span>
+                  <span className="badge warn">Weather: {r.weather}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
-    </>
+    </div>
   );
 }
 
-/* =========================
-   CLIENTS
-========================= */
+/* ==========================================================================
+   MODULE 2: SALES & CRM VIEW
+   ========================================================================== */
+function CrmView({ leads, clients, query, onRefresh, onAddLead, onDelete }: any) {
+  const stages = ['Lead', 'Prospect', 'Site Visit', 'Requirement', 'Design Discussion', 'Quotation', 'Negotiation', 'Won', 'Lost'];
 
-function clientNameLocal(
-  id: string | null,
-  clients: Client[]
-) {
-  const c = clients.find(
-    x => x.id === id
-  );
+  const filtered = useMemo(() => {
+    return leads.filter((l: any) =>
+      l.contactName.toLowerCase().includes(query.toLowerCase()) ||
+      (l.companyName && l.companyName.toLowerCase().includes(query.toLowerCase()))
+    );
+  }, [leads, query]);
 
-  if (!c) return 'Unassigned';
-
-  if (c.unit_building_name) {
-    return c.unit_number
-      ? `${c.unit_building_name} • ${c.unit_number}`
-      : c.unit_building_name;
+  async function updateStage(leadId: string, newStage: string) {
+    await fetch('/api/leads', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: leadId, stage: newStage })
+    });
+    onRefresh();
   }
 
-  return c.name;
-}
-
-function Kpi({
-  title,
-  value,
-  note,
-  good,
-  bad
-}: {
-  title: string;
-  value: string;
-  note: string;
-  good?: boolean;
-  bad?: boolean;
-}) {
   return (
-    <Card className="kpi">
-      <div className="kpiTop">
-        <span>
-          {title}
-        </span>
+    <div>
+      <div className="sectionHead">
+        <div>
+          <h2>Sales & CRM Pipeline</h2>
+          <span>Lead &gt; Prospect &gt; Site Visit &gt; Requirement &gt; Design Discussion &gt; Quotation &gt; Negotiation &gt; Won/Lost</span>
+        </div>
+        <button className="primary" onClick={onAddLead}><Plus size={14} /> New CRM Lead</button>
       </div>
 
-      <strong>
-        {value}
-      </strong>
-
-      <small
-        className={
-          good
-            ? 'goodText'
-            : bad
-              ? 'badText'
-              : ''
-        }
-      >
-        {note}
-      </small>
-    </Card>
-  );
-}
-
-function Clients({
-  clients,
-  query,
-  onAdd
-}: {
-  clients: Client[];
-  query: string;
-  onAdd: () => void;
-}) {
-  const list =
-    clients.filter(c =>
-      `${c.name} ${
-        c.unit_building_name ||
-        ''
-      } ${
-        c.unit_number || ''
-      } ${
-        c.email || ''
-      }`
-        .toLowerCase()
-        .includes(
-          query.toLowerCase()
-        )
-    );
-
-  return (
-    <>
-      <Top
-        title="Clients"
-        sub="Your client master — one record feeding every project."
-        action={
-          <button
-            className="primary"
-            onClick={onAdd}
-          >
-            <Plus size={14} />
-            New Client
-          </button>
-        }
-      />
-
-      <Card>
-        <Table
-          headers={[
-            'Client',
-            'Unit / Building',
-            'Unit Number',
-            'Phone',
-            'Email'
-          ]}
-          rows={list.map(c => [
-            <b key="name">
-              {c.name}
-            </b>,
-            c.unit_building_name ||
-              '—',
-            c.unit_number ||
-              '—',
-            c.phone || '—',
-            c.email || '—'
-          ])}
-        />
-
-        {list.length ===
-          0 && (
-          <Empty text="No clients yet. Create your first client." />
-        )}
-      </Card>
-    </>
-  );
-}
-
-/* =========================
-   PROJECTS
-========================= */
-
-function Projects({
-  projects,
-  clients,
-  query,
-  onAdd,
-  onOpen
-}: {
-  projects: Project[];
-  clients: Client[];
-  query: string;
-  onAdd: () => void;
-  onOpen: (p: Project) => void;
-}) {
-  const list =
-    projects.filter(p =>
-      `${p.name} ${clientNameLocal(
-        p.client_id,
-        clients
-      )}`
-        .toLowerCase()
-        .includes(
-          query.toLowerCase()
-        )
-    );
-
-  return (
-    <>
-      <Top
-        title="Projects"
-        sub="Live project records connected to your client master."
-        action={
-          <button
-            className="primary"
-            onClick={onAdd}
-          >
-            <Plus size={14} />
-            New Project
-          </button>
-        }
-      />
-
-      <div className="threeCols">
-        {list.map(p => (
-          <Card
-            key={p.id}
-            onClick={() =>
-              onOpen(p)
-            }
-          >
-            <div className="sectionHead">
-              <div>
-                <h3>
-                  {p.name}
-                </h3>
-
-                <span>
-                  {clientNameLocal(
-                    p.client_id,
-                    clients
-                  )}
-                </span>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12, marginTop: 15 }}>
+        {stages.map(stage => {
+          const stageLeads = filtered.filter((l: any) => l.stage === stage);
+          return (
+            <div key={stage} className="card" style={{ background: '#fafbfc', minHeight: 350 }}>
+              <div className="sectionHead" style={{ borderBottom: '1px solid #e7ebf0', paddingBottom: 8 }}>
+                <b style={{ fontSize: 11 }}>{stage}</b>
+                <span className="badge">{stageLeads.length}</span>
               </div>
 
-              <Badge>
-                {p.status}
-              </Badge>
-            </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
+                {stageLeads.map((lead: any) => (
+                  <div key={lead.id} className="card" style={{ background: '#fff', padding: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <b style={{ fontSize: 11, display: 'block' }}>{lead.contactName}</b>
+                      {onDelete && (
+                        <button
+                          className="iconBtn"
+                          style={{ padding: 2, color: '#ef4444' }}
+                          title="Delete Lead"
+                          onClick={() => onDelete('leads', lead.id)}
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      )}
+                    </div>
+                    <small style={{ color: '#68758a', display: 'block', margin: '2px 0' }}>{lead.companyName}</small>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', margin: '6px 0', fontSize: 10, fontWeight: 700 }}>
+                      <span>{lead.projectType}</span>
+                      <span className="goodText">{money(lead.estimatedBudget || 0)}</span>
+                    </div>
 
-            <div className="bar bigbar">
-              <i
-                style={{
-                  width: `${p.progress}%`
-                }}
-              />
-            </div>
+                    <div style={{ display: 'flex', gap: 4, marginTop: 8 }}>
+                      <select
+                        value={lead.stage}
+                        onChange={e => updateStage(lead.id, e.target.value)}
+                        style={{ fontSize: 9, padding: '4px 6px', width: '100%' }}
+                      >
+                        {stages.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                ))}
 
-            <div className="projectFoot">
-              <span>
-                {p.progress}%
-                complete
-              </span>
-
-              <b>
-                {money(
-                  Number(
-                    p.contract_value ||
-                      0
-                  ) -
-                    Number(
-                      p.actual_cost ||
-                        0
-                    )
-                )}{' '}
-                GP
-              </b>
-            </div>
-
-            <div className="miniStats">
-              <div>
-                <small>
-                  Contract
-                </small>
-
-                <b>
-                  {money(
-                    Number(
-                      p.contract_value ||
-                        0
-                    )
-                  )}
-                </b>
-              </div>
-
-              <div>
-                <small>
-                  Budget
-                </small>
-
-                <b>
-                  {money(
-                    Number(
-                      p.approved_budget ||
-                        0
-                    )
-                  )}
-                </b>
+                {stageLeads.length === 0 && (
+                  <div style={{ color: '#a0aec0', fontSize: 10, textAlign: 'center', padding: 20 }}>No leads in stage</div>
+                )}
               </div>
             </div>
-
-            <small>
-              Due{' '}
-              {p.due_date ||
-                'TBD'}
-            </small>
-          </Card>
-        ))}
-
-        {list.length ===
-          0 && (
-          <Empty text="No projects yet. Create your first project." />
-        )}
+          );
+        })}
       </div>
-    </>
+    </div>
   );
 }
 
-/* =========================
-   PROJECT DETAIL + MILESTONES
-========================= */
-
-function ProjectDetail({
-  project,
-  clients,
-  milestones,
-  onBack,
-  onAddMilestone,
-  onUpdateMilestone,
-  onDeleteMilestone
-}: {
-  project: Project;
-  clients: Client[];
-  milestones: Milestone[];
-  onBack: () => void;
-  onAddMilestone: () => void;
-  onUpdateMilestone: (
-    id: string,
-    updates: Partial<Milestone>
-  ) => void;
-  onDeleteMilestone: (
-    id: string
-  ) => void;
-}) {
-  const client =
-    clientNameLocal(
-      project.client_id,
-      clients
-    );
-
-  const gp =
-    Number(
-      project.contract_value || 0
-    ) -
-    Number(
-      project.actual_cost || 0
-    );
-
-  const completed =
-    milestones.filter(
-      m => m.status === 'Done'
-    ).length;
-
-  const milestoneProgress =
-    milestones.length > 0
-      ? Math.round(
-          milestones.reduce(
-            (sum, m) =>
-              sum +
-              Number(
-                m.progress || 0
-              ),
-            0
-          ) /
-            milestones.length
-        )
-      : 0;
-
-  const phasesUsed = Array.from(
-    new Set(
-      milestones.map(
-        m => m.phase
-      )
-    )
-  );
+/* ==========================================================================
+   MODULE 3: QUOTATIONS & BOQ VIEW
+   ========================================================================== */
+function QuotationsView({ quotations, projects, leads, clients, query, onRefresh, onAddQuotation, onDelete }: any) {
+  const displayQuotations = quotations.length > 0 ? quotations : projects.map((p: any) => ({
+    id: p.id,
+    quoteNo: `QUO-2026-${p.code.substring(9)}`,
+    title: p.name,
+    clientName: p.client?.name,
+    materialCost: p.contractValue * 0.45,
+    labourCost: p.contractValue * 0.25,
+    overheads: p.contractValue * 0.08,
+    markupPct: 18,
+    subtotal: p.contractValue * 0.82,
+    tax: p.contractValue * 0.18,
+    total: p.contractValue,
+    status: 'Approved'
+  }));
 
   return (
-    <>
-      <Top
-        title={project.name}
-        sub={client}
-        action={
-          <button
-            className="secondary"
-            onClick={onBack}
-          >
-            ← Back to Projects
-          </button>
-        }
-      />
+    <div>
+      <div className="sectionHead">
+        <div>
+          <h2>Commercial Quotations & BOQ Engine</h2>
+          <span>Requirement &gt; BOQ &gt; Material &gt; Labour &gt; Overheads &gt; Markup &gt; Quotation &gt; Approval &gt; Advance</span>
+        </div>
+        <button className="primary" onClick={onAddQuotation}><Plus size={14} /> Create Quotation</button>
+      </div>
 
-      <div className="threeCols">
-        <Card>
-          <small>
-            Status
-          </small>
+      <div className="card tableCard">
+        <div className="tableWrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Quote No</th>
+                <th>Project / Title</th>
+                <th>Material Cost</th>
+                <th>Labour Cost</th>
+                <th>Overheads</th>
+                <th>Markup %</th>
+                <th>Subtotal</th>
+                <th>Tax</th>
+                <th>Total Value</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {displayQuotations.map((q: any) => (
+                <tr key={q.id}>
+                  <td><b>{q.quoteNo}</b></td>
+                  <td>
+                    <b>{q.title}</b>
+                    <div style={{ fontSize: 8, color: '#778397' }}>{q.clientName || q.client?.name}</div>
+                  </td>
+                  <td>{money(q.materialCost)}</td>
+                  <td>{money(q.labourCost)}</td>
+                  <td>{money(q.overheads)}</td>
+                  <td>{q.markupPct}%</td>
+                  <td>{money(q.subtotal)}</td>
+                  <td>{money(q.tax)}</td>
+                  <td><b className="goodText">{money(q.total)}</b></td>
+                  <td><StatusBadge>{q.status}</StatusBadge></td>
+                  <td>
+                    {onDelete && (
+                      <button
+                        className="iconBtn"
+                        style={{ padding: 4, color: '#ef4444' }}
+                        title="Delete Quotation"
+                        onClick={() => onDelete('quotations', q.id)}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-          <h3>
-            {project.status}
-          </h3>
+/* ==========================================================================
+   MODULE 4: DESIGN STUDIO VIEW
+   ========================================================================== */
+function DesignStudioView({ designItems, moodboards, projects, approvals, onRefresh, onAddDesign, onDelete }: any) {
+  return (
+    <div>
+      <div className="sectionHead">
+        <div>
+          <h2>Design Studio & Moodboard Approval</h2>
+          <span>Measurements &gt; Concept &gt; Layout &gt; 3D &gt; Material selection &gt; Moodboard &gt; Approvals &gt; Working drawings</span>
+        </div>
+        <button className="primary" onClick={onAddDesign}><Plus size={14} /> New Design / Moodboard</button>
+      </div>
 
-          <small>
-            Progress
-          </small>
-
-          <div className="bar bigbar">
-            <i
+      <div className="materialGrid">
+        {designItems.map((item: any) => (
+          <div key={item.id} className="card mood">
+            <div
+              className="moodVisual"
               style={{
-                width: `${project.progress}%`
+                backgroundImage: `url(${item.fileUrl})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center'
               }}
             />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <b style={{ flex: 1 }}>{item.title}</b>
+              {onDelete && (
+                <button
+                  className="iconBtn"
+                  style={{ padding: 4, color: '#ef4444' }}
+                  title="Delete Design Item"
+                  onClick={() => onDelete('design', item.id, 'design')}
+                >
+                  <Trash2 size={13} />
+                </button>
+              )}
+            </div>
+            <small>Project: {item.project?.name}</small>
+            <div className="chips">
+              <span>{item.type}</span>
+              <span>v{item.version}</span>
+            </div>
+            <div className="rowButtons">
+              <StatusBadge>{item.status}</StatusBadge>
+            </div>
           </div>
+        ))}
 
-          <b>
-            {project.progress}%
-            complete
-          </b>
-        </Card>
+        {designItems.length === 0 && (
+          <>
+            <div className="card mood">
+              <div className="moodVisual" style={{ background: 'linear-gradient(135deg,#2d3748,#4a5568,#1a202c)' }} />
+              <b>Executive Boardroom 3D Visualization</b>
+              <small>Approved by Client on June 24</small>
+              <div className="chips">
+                <span>3D Render</span>
+                <span>Acoustic Felt</span>
+                <span>Oak Veneer</span>
+              </div>
+              <div className="rowButtons">
+                <StatusBadge>Approved</StatusBadge>
+              </div>
+            </div>
 
-        <Card>
-          <small>
-            Contract Value
-          </small>
-
-          <h2>
-            {money(
-              Number(
-                project.contract_value ||
-                  0
-              )
-            )}
-          </h2>
-
-          <small>
-            Approved Budget
-          </small>
-
-          <h3>
-            {money(
-              Number(
-                project.approved_budget ||
-                  0
-              )
-            )}
-          </h3>
-        </Card>
-
-        <Card>
-          <small>
-            Actual Cost
-          </small>
-
-          <h2>
-            {money(
-              Number(
-                project.actual_cost ||
-                  0
-              )
-            )}
-          </h2>
-
-          <small>
-            Gross Profit
-          </small>
-
-          <h3>
-            {money(gp)}
-          </h3>
-        </Card>
-      </div>
-
-      <Card className="hero">
-        <div className="sectionHead">
-          <div>
-            <h3>
-              Project Overview
-            </h3>
-
-            <span>
-              Core project
-              information
-            </span>
-          </div>
-
-          <Badge>
-            {project.status}
-          </Badge>
-        </div>
-
-        <div className="miniStats">
-          <div>
-            <small>
-              Client
-            </small>
-
-            <b>
-              {clients.find(
-                c =>
-                  c.id ===
-                  project.client_id
-              )?.name ||
-                'Unassigned'}
-            </b>
-          </div>
-
-          <div>
-            <small>
-              Unit / Building
-            </small>
-
-            <b>
-              {clients.find(
-                c =>
-                  c.id ===
-                  project.client_id
-              )
-                ?.unit_building_name ||
-                '—'}
-            </b>
-          </div>
-
-          <div>
-            <small>
-              Unit Number
-            </small>
-
-            <b>
-              {clients.find(
-                c =>
-                  c.id ===
-                  project.client_id
-              )
-                ?.unit_number ||
-                '—'}
-            </b>
-          </div>
-
-          <div>
-            <small>
-              Start Date
-            </small>
-
-            <b>
-              {project.start_date ||
-                'TBD'}
-            </b>
-          </div>
-
-          <div>
-            <small>
-              Due Date
-            </small>
-
-            <b>
-              {project.due_date ||
-                'TBD'}
-            </b>
-          </div>
-        </div>
-      </Card>
-
-      <Card className="hero">
-        <Section
-          title="Project Milestones"
-          sub={`${completed} of ${milestones.length} milestones completed`}
-          action={
-            <button
-              className="primary"
-              onClick={
-                onAddMilestone
-              }
-            >
-              <Plus size={14} />
-              Add Milestone
-            </button>
-          }
-        />
-
-        <div className="milestoneSummary">
-          <div>
-            <small>
-              Overall Milestone
-              Progress
-            </small>
-
-            <strong>
-              {milestoneProgress}%
-            </strong>
-          </div>
-
-          <div>
-            <small>
-              Total Milestones
-            </small>
-
-            <strong>
-              {milestones.length}
-            </strong>
-          </div>
-
-          <div>
-            <small>
-              Completed
-            </small>
-
-            <strong>
-              {completed}
-            </strong>
-          </div>
-
-          <div>
-            <small>
-              Active Phases
-            </small>
-
-            <strong>
-              {phasesUsed.length}
-            </strong>
-          </div>
-        </div>
-
-        {milestones.length ===
-        0 ? (
-          <div className="empty">
-            No milestones yet.
-            Add your first
-            execution milestone
-            for this project.
-          </div>
-        ) : (
-          <div className="milestoneList">
-            {milestones.map(
-              milestone => (
-                <MilestoneRow
-                  key={
-                    milestone.id
-                  }
-                  milestone={
-                    milestone
-                  }
-                  onUpdate={
-                    onUpdateMilestone
-                  }
-                  onDelete={
-                    onDeleteMilestone
-                  }
-                />
-              )
-            )}
-          </div>
+            <div className="card mood">
+              <div className="moodVisual" style={{ background: 'linear-gradient(135deg,#c5a880,#e6dace,#2c2c2c)' }} />
+              <b>Townhall Experience Center Palette</b>
+              <small>Submitted for Client Sign-off</small>
+              <div className="chips">
+                <span>Moodboard</span>
+                <span>Marble</span>
+                <span>Brass Trim</span>
+              </div>
+              <div className="rowButtons">
+                <StatusBadge>Pending Approval</StatusBadge>
+              </div>
+            </div>
+          </>
         )}
-      </Card>
-    </>
+      </div>
+    </div>
   );
 }
 
-function MilestoneRow({
-  milestone,
-  onUpdate,
-  onDelete
-}: {
-  milestone: Milestone;
-  onUpdate: (
-    id: string,
-    updates: Partial<Milestone>
-  ) => void;
-  onDelete: (
-    id: string
-  ) => void;
-}) {
+/* ==========================================================================
+   MODULE 5: PROJECTS MASTER & MILESTONE DETAIL
+   ========================================================================== */
+function ProjectsMasterView({ projects, clients, query, onOpenProject, onAddProject, onDelete }: any) {
   return (
-    <div className="milestoneRow">
-      <div className="milestoneMain">
-        <div className="milestoneTitle">
-          <div>
-            <small>
-              {milestone.phase}
-            </small>
-
-            <h4>
-              {milestone.name}
-            </h4>
-          </div>
-
-          <Badge>
-            {milestone.status}
-          </Badge>
+    <div>
+      <div className="sectionHead">
+        <div>
+          <h2>Project Master & Execution</h2>
+          <span>Project plan &gt; Milestones &gt; Trade checklist &gt; Responsible person &gt; Milestone % &gt; Project %</span>
         </div>
-
-        <div className="milestoneBar">
-          <i
-            style={{
-              width: `${milestone.progress}%`
-            }}
-          />
-        </div>
-
-        <div className="milestoneMeta">
-          <span>
-            <CalendarDays
-              size={13}
-            />
-
-            {milestone.planned_start ||
-              'TBD'}
-            {' → '}
-            {milestone.planned_finish ||
-              'TBD'}
-          </span>
-
-          <span>
-            <UserRound
-              size={13}
-            />
-
-            {milestone.responsible_person ||
-              'Unassigned'}
-          </span>
-
-          <b>
-            {milestone.progress}%
-          </b>
-        </div>
-
-        {milestone.notes && (
-          <small className="milestoneNotes">
-            {milestone.notes}
-          </small>
-        )}
+        <button className="primary" onClick={onAddProject}><Plus size={14} /> New Project Master</button>
       </div>
 
-      <div className="milestoneActions">
-        <select
-          value={
-            milestone.status
-          }
-          onChange={e =>
-            onUpdate(
-              milestone.id,
-              {
-                status:
-                  e.target
-                    .value
-              }
-            )
-          }
-        >
-          {milestoneStatuses.map(
-            status => (
-              <option
-                key={status}
-                value={status}
-              >
-                {status}
-              </option>
-            )
-          )}
-        </select>
+      <div className="grid4" style={{ marginTop: 15 }}>
+        {projects.map((p: any) => (
+          <div key={p.id} className="card" style={{ cursor: 'pointer' }} onClick={() => onOpenProject(p)}>
+            <div className="projectTop">
+              <b style={{ fontSize: 13 }}>{p.name}</b>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <StatusBadge>{p.status}</StatusBadge>
+                {onDelete && (
+                  <button
+                    className="iconBtn"
+                    style={{ padding: 4, color: '#ef4444' }}
+                    title="Delete Project"
+                    onClick={(e) => { e.stopPropagation(); onDelete('projects', p.id); }}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                )}
+              </div>
+            </div>
+            <small>{p.location}</small>
+            <div style={{ margin: '12px 0' }}>
+              <div className="bar"><i style={{ width: `${p.progress}%` }} /></div>
+              <div className="projectFoot">
+                <span>Progress: {p.progress}%</span>
+                <b>Contract: {money(p.contractValue)}</b>
+              </div>
+            </div>
+            <button className="small" style={{ width: '100%', justifyContent: 'center' }}>Open Milestones & Checklist</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
-        <select
-          value={
-            milestone.progress
-          }
-          onChange={e =>
-            onUpdate(
-              milestone.id,
-              {
-                progress:
-                  Number(
-                    e.target
-                      .value
-                  )
-              }
-            )
-          }
-        >
-          {[0, 25, 50, 75, 100].map(
-            value => (
-              <option
-                key={value}
-                value={value}
-              >
-                {value}%
-              </option>
-            )
-          )}
-        </select>
+function ProjectDetailView({ project, onBack, onRefresh }: any) {
+  const [updatingMilestone, setUpdatingMilestone] = useState<string | null>(null);
+  const [showEditFinancials, setShowEditFinancials] = useState(false);
 
+  async function updateMilestoneProgress(id: string, progress: number, status: string) {
+    setUpdatingMilestone(id);
+    await fetch('/api/milestones', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, progress, status })
+    });
+    setUpdatingMilestone(null);
+    onRefresh();
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 15 }}>
+        <button className="small" onClick={onBack}>&larr; Back to Projects</button>
+        <div>
+          <h2 style={{ margin: 0 }}>{project.name}</h2>
+          <span style={{ fontSize: 10, color: '#778397' }}>{project.code} • {project.location}</span>
+        </div>
         <button
-          className="iconBtn"
-          title="Delete milestone"
-          onClick={() =>
-            onDelete(
-              milestone.id
-            )
-          }
+          className="primary"
+          style={{ marginLeft: 'auto', padding: '6px 12px', fontSize: 10 }}
+          onClick={() => setShowEditFinancials(true)}
         >
-          <X size={14} />
+          <Sliders size={13} style={{ marginRight: 5 }} /> Edit Financials & Progress
         </button>
       </div>
-    </div>
-  );
-}
 
-/* =========================
-   PLACEHOLDER
-========================= */
-
-function Placeholder({
-  title
-}: {
-  title: string;
-}) {
-  return (
-    <>
-      <Top
-        title={title}
-        sub="The navigation is in place. This module will be connected to the same project data layer next."
-      />
-
-      <Card className="hero">
-        <h2>
-          Production module
-          queued
-        </h2>
-
-        <p>
-          We are building this
-          module on top of the
-          live Clients +
-          Projects foundation
-          instead of demo-only
-          state.
-        </p>
-
-        <div className="heroMetrics">
+      <div className="card" style={{ marginBottom: 15 }}>
+        <div className="heroMetrics" style={{ marginTop: 0, justifyContent: 'space-between' }}>
           <div>
-            <b>LIVE</b>
-            <small>
-              Supabase connection
-            </small>
+            <small>CONTRACT VALUE</small>
+            <b>{money(project.contractValue)}</b>
           </div>
-
           <div>
-            <b>AUTH</b>
-            <small>
-              Protected workspace
-            </small>
+            <small>APPROVED BUDGET</small>
+            <b>{money(project.approvedBudget)}</b>
           </div>
-
           <div>
-            <b>READY</b>
-            <small>
-              For next workflow
-            </small>
+            <small>ACTUAL SPENT COST</small>
+            <b className="goodText">{money(project.actualCost)}</b>
+          </div>
+          <div>
+            <small>OVERALL PROGRESS</small>
+            <b>{project.progress}%</b>
           </div>
         </div>
-      </Card>
-    </>
-  );
-}
+      </div>
 
-/* =========================
-   CLIENT MODAL
-========================= */
-
-function ClientModal({
-  close,
-  save
-}: {
-  close: () => void;
-  save: (v: {
-    name: string;
-    unit_building_name: string;
-    unit_number: string;
-    phone: string;
-    email: string;
-  }) => Promise<void>;
-}) {
-  const [v, setV] =
-    useState({
-      name: '',
-      unit_building_name: '',
-      unit_number: '',
-      phone: '',
-      email: ''
-    });
-
-  const [busy, setBusy] =
-    useState(false);
-
-  const [error, setError] =
-    useState('');
-
-  return (
-    <Modal
-      title="New Client"
-      close={close}
-      busy={busy}
-      error={error}
-      onSave={async () => {
-        if (!v.name) {
-          setError(
-            'Client name is required.'
-          );
-          return;
-        }
-
-        setBusy(true);
-
-        try {
-          await save(v);
-        } catch (e: any) {
-          setError(
-            e.message
-          );
-        } finally {
-          setBusy(false);
-        }
-      }}
-    >
-      <Field
-        label="Contact name"
-        value={v.name}
-        onChange={x =>
-          setV({
-            ...v,
-            name: x
-          })
-        }
-        placeholder="e.g. Rajiv Sharma"
-      />
-
-      <Field
-        label="Unit / Building Name"
-        value={
-          v.unit_building_name
-        }
-        onChange={x =>
-          setV({
-            ...v,
-            unit_building_name:
-              x
-          })
-        }
-        placeholder="e.g. EON Fairfox"
-      />
-
-      <Field
-        label="Unit Number"
-        value={
-          v.unit_number
-        }
-        onChange={x =>
-          setV({
-            ...v,
-            unit_number: x
-          })
-        }
-        placeholder="e.g. 1914"
-      />
-
-      <Field
-        label="Phone"
-        value={v.phone}
-        onChange={x =>
-          setV({
-            ...v,
-            phone: x
-          })
-        }
-        placeholder="+91 …"
-      />
-
-      <Field
-        label="Email"
-        value={v.email}
-        onChange={x =>
-          setV({
-            ...v,
-            email: x
-          })
-        }
-        placeholder="client@company.com"
-      />
-    </Modal>
-  );
-}
-
-/* =========================
-   PROJECT MODAL
-========================= */
-
-function ProjectModal({
-  clients,
-  close,
-  save
-}: {
-  clients: Client[];
-  close: () => void;
-  save: (v: {
-    name: string;
-    client_id: string;
-    contract_value: number;
-    approved_budget: number;
-    start_date: string;
-    due_date: string;
-  }) => Promise<void>;
-}) {
-  const [v, setV] =
-    useState({
-      name: '',
-      client_id:
-        clients[0]?.id || '',
-      contract_value: '',
-      approved_budget: '',
-      start_date: '',
-      due_date: ''
-    });
-
-  const [busy, setBusy] =
-    useState(false);
-
-  const [error, setError] =
-    useState('');
-
-  const selectedClient =
-    clients.find(
-      c =>
-        c.id ===
-        v.client_id
-    );
-
-  return (
-    <Modal
-      title="New Project"
-      close={close}
-      busy={busy}
-      error={error}
-      onSave={async () => {
-        if (
-          !v.name ||
-          !v.client_id
-        ) {
-          setError(
-            'Project name and client are required.'
-          );
-          return;
-        }
-
-        setBusy(true);
-
-        try {
-          await save({
-            name: v.name,
-            client_id:
-              v.client_id,
-            contract_value:
-              Number(
-                v.contract_value ||
-                  0
-              ),
-            approved_budget:
-              Number(
-                v.approved_budget ||
-                  0
-              ),
-            start_date:
-              v.start_date,
-            due_date:
-              v.due_date
-          });
-        } catch (e: any) {
-          setError(
-            e.message
-          );
-        } finally {
-          setBusy(false);
-        }
-      }}
-    >
-      <Field
-        label="Project name"
-        value={v.name}
-        onChange={x =>
-          setV({
-            ...v,
-            name: x
-          })
-        }
-        placeholder="e.g. Sector 18 Corporate Office"
-      />
-
-      <label>
-        Client
-
-        <select
-          value={
-            v.client_id
-          }
-          onChange={e =>
-            setV({
-              ...v,
-              client_id:
-                e.target
-                  .value
-            })
-          }
-        >
-          {clients.map(
-            c => (
-              <option
-                key={c.id}
-                value={c.id}
-              >
-                {c.name}
-              </option>
-            )
-          )}
-        </select>
-      </label>
-
-      {selectedClient && (
-        <div className="selectedClientInfo">
-          <small>
-            Project location
-          </small>
-
-          <b>
-            {selectedClient.unit_building_name ||
-              'Building not specified'}
-          </b>
-
-          <span>
-            Unit{' '}
-            {selectedClient.unit_number ||
-              '—'}
-          </span>
-        </div>
+      {showEditFinancials && (
+        <EditProjectFinancialsModal
+          project={project}
+          onClose={() => setShowEditFinancials(false)}
+          onSuccess={onRefresh}
+        />
       )}
 
-      <Field
-        label="Contract value"
-        value={
-          v.contract_value
-        }
-        onChange={x =>
-          setV({
-            ...v,
-            contract_value: x
-          })
-        }
-        placeholder="3200000"
-        type="number"
-      />
+      <div className="card">
+        <div className="sectionHead">
+          <h3>Execution Milestones ({project.milestones?.length || 0})</h3>
+        </div>
 
-      <Field
-        label="Approved budget"
-        value={
-          v.approved_budget
-        }
-        onChange={x =>
-          setV({
-            ...v,
-            approved_budget:
-              x
-          })
-        }
-        placeholder="2050000"
-        type="number"
-      />
+        <div className="list">
+          {project.milestones?.map((m: any) => (
+            <div key={m.id} className="listItem" style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr 1fr 1fr', gap: 10, alignItems: 'center' }}>
+              <div>
+                <b>{m.name}</b>
+                <small>Phase: {m.phase} • Responsible: {m.responsiblePerson || 'Supervisor'}</small>
+              </div>
 
-      <div className="formGrid">
-        <Field
-          label="Start date"
-          value={
-            v.start_date
-          }
-          onChange={x =>
-            setV({
-              ...v,
-              start_date: x
-            })
-          }
-          type="date"
-        />
+              <div>
+                <div className="bar"><i style={{ width: `${m.progress}%` }} /></div>
+                <small>{m.progress}% complete</small>
+              </div>
 
-        <Field
-          label="Due date"
-          value={
-            v.due_date
-          }
-          onChange={x =>
-            setV({
-              ...v,
-              due_date: x
-            })
-          }
-          type="date"
-        />
+              <div>
+                <StatusBadge>{m.status}</StatusBadge>
+              </div>
+
+              <div>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={m.progress}
+                  onChange={e => updateMilestoneProgress(m.id, parseInt(e.target.value), parseInt(e.target.value) === 100 ? 'Done' : 'In Progress')}
+                />
+              </div>
+
+              <div style={{ textAlign: 'right' }}>
+                {updatingMilestone === m.id ? 'Saving...' : <CheckCircle2 size={16} className="goodText" />}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
-    </Modal>
+    </div>
   );
 }
 
-/* =========================
-   MILESTONE MODAL
-========================= */
+/* ==========================================================================
+   MODULE 6: SITE CONTROL VIEW
+   ========================================================================== */
+function SiteControlView({ siteReports, projects, onAddReport, onDelete }: any) {
+  return (
+    <div>
+      <div className="sectionHead">
+        <div>
+          <h2>Daily Site Control & Supervisor Reporting</h2>
+          <span>Daily site reports, labour present, completed work, material received, issues, photos & supervisor reporting</span>
+        </div>
+        <button className="primary" onClick={onAddReport}><Plus size={14} /> New Daily Site Report</button>
+      </div>
 
-function MilestoneModal({
-  project,
-  close,
-  save
-}: {
-  project: Project;
-  close: () => void;
-  save: (v: {
-    project_id: string;
-    phase: string;
-    name: string;
-    planned_start: string;
-    planned_finish: string;
-    status: string;
-    progress: number;
-    responsible_person: string;
-    notes: string;
-  }) => Promise<void>;
-}) {
-  const [v, setV] =
-    useState({
-      phase:
-        'Pre-Execution',
-      name: '',
-      planned_start: '',
-      planned_finish: '',
-      status: 'Pending',
-      progress: 0,
-      responsible_person:
-        '',
-      notes: ''
+      <div className="grid4" style={{ marginTop: 15 }}>
+        {siteReports.map((r: any) => (
+          <div key={r.id} className="card">
+            <div className="sectionHead">
+              <b>{r.project?.name}</b>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <StatusBadge>{new Date(r.reportDate).toLocaleDateString()}</StatusBadge>
+                {onDelete && (
+                  <button
+                    className="iconBtn"
+                    style={{ padding: 4, color: '#ef4444' }}
+                    title="Delete Site Report"
+                    onClick={() => onDelete('site-reports', r.id)}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <p style={{ margin: '8px 0', fontSize: 11 }}>{r.workCompleted}</p>
+
+            {r.materialsRecd && (
+              <small style={{ color: '#4a5568', display: 'block', margin: '4px 0' }}>
+                <b>Materials Recd:</b> {r.materialsRecd}
+              </small>
+            )}
+
+            <div style={{ display: 'flex', gap: 6, margin: '10px 0' }}>
+              <span className="badge good">{r.labourPresent} Workers On Site</span>
+              <span className="badge warn">{r.weather} Weather</span>
+            </div>
+
+            {r.photos?.map((photo: any) => (
+              <div key={photo.id} style={{ marginTop: 8 }}>
+                <img src={photo.imageUrl} alt="Site" style={{ width: '100%', height: 120, objectFit: 'cover', borderRadius: 8 }} />
+                <small style={{ fontSize: 9, color: '#718096' }}>{photo.caption}</small>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ==========================================================================
+   MODULE 7: LABOUR MANAGEMENT VIEW
+   ========================================================================== */
+function LabourView({ workers, assignments, projects, onRefresh, onAddLabour, onDelete }: any) {
+  return (
+    <div>
+      <div className="sectionHead">
+        <div>
+          <h2>Labour & Trade Management</h2>
+          <span>People/trades &gt; Assigned tasks &gt; Due dates &gt; Completion &gt; Performance tracking</span>
+        </div>
+        <button className="primary" onClick={onAddLabour}><Plus size={14} /> Add Trade Worker / Task</button>
+      </div>
+
+      <div className="twoCols">
+        <div className="card">
+          <div className="sectionHead">
+            <h3>Trade Contractors & Crews</h3>
+          </div>
+          <div className="tableWrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Trade Worker</th>
+                  <th>Trade Specialization</th>
+                  <th>Daily Rate</th>
+                  <th>Rating</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {workers.map((w: any) => (
+                  <tr key={w.id}>
+                    <td><b>{w.name}</b></td>
+                    <td><span className="badge">{w.trade}</span></td>
+                    <td>{money(w.dailyRate)}/day</td>
+                    <td><b className="goodText">★ {w.rating}</b></td>
+                    <td>
+                      {onDelete && (
+                        <button
+                          className="iconBtn"
+                          style={{ padding: 4, color: '#ef4444' }}
+                          title="Delete Worker"
+                          onClick={() => onDelete('labour', w.id, 'worker')}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="sectionHead">
+            <h3>Active Task Assignments</h3>
+          </div>
+          <div className="list">
+            {assignments.map((a: any) => (
+              <div key={a.id} className="listItem">
+                <div>
+                  <b>{a.taskName}</b>
+                  <small>Assigned: {a.worker?.name} ({a.worker?.trade})</small>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <StatusBadge>{a.status}</StatusBadge>
+                  {onDelete && (
+                    <button
+                      className="iconBtn"
+                      style={{ padding: 4, color: '#ef4444' }}
+                      title="Delete Assignment"
+                      onClick={() => onDelete('labour', a.id, 'assignment')}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ==========================================================================
+   MODULE 8: MATERIAL & PROCUREMENT VIEW
+   ========================================================================== */
+function ProcurementView({ materials, purchaseOrders, projects, onRefresh, onAddProcurement, onDelete }: any) {
+  return (
+    <div>
+      <div className="sectionHead">
+        <div>
+          <h2>Material & Procurement Engine</h2>
+          <span>BOQ &gt; Material requirement &gt; Purchase request &gt; Vendor &gt; PO &gt; Ordered &gt; Received &gt; Store/Site &gt; Consumed</span>
+        </div>
+        <button className="primary" onClick={onAddProcurement}><Plus size={14} /> Add Material / PO</button>
+      </div>
+
+      <div className="twoCols">
+        <div className="card">
+          <div className="sectionHead">
+            <h3>Material Master Catalog</h3>
+          </div>
+          <div className="tableWrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Code</th>
+                  <th>Material Name</th>
+                  <th>Category</th>
+                  <th>Unit Rate</th>
+                  <th>Stock Qty</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {materials.map((m: any) => (
+                  <tr key={m.id}>
+                    <td><b>{m.code}</b></td>
+                    <td>{m.name}</td>
+                    <td><span className="badge">{m.category}</span></td>
+                    <td>{money(m.unitRate)} / {m.unit}</td>
+                    <td><b>{m.stockQty} {m.unit}</b></td>
+                    <td>
+                      {onDelete && (
+                        <button
+                          className="iconBtn"
+                          style={{ padding: 4, color: '#ef4444' }}
+                          title="Delete Material"
+                          onClick={() => onDelete('procurement', m.id, 'material')}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="sectionHead">
+            <h3>Vendor Purchase Orders (PO)</h3>
+          </div>
+          <div className="list">
+            {purchaseOrders.map((po: any) => (
+              <div key={po.id} className="listItem" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <b>{po.poNo} — {po.vendorName}</b>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <StatusBadge>{po.status}</StatusBadge>
+                    {onDelete && (
+                      <button
+                        className="iconBtn"
+                        style={{ padding: 4, color: '#ef4444' }}
+                        title="Delete PO"
+                        onClick={() => onDelete('procurement', po.id, 'po')}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <small>Project: {po.project?.name}</small>
+                <b className="goodText" style={{ marginTop: 4 }}>Total PO Amount: {money(po.totalAmount)}</b>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ==========================================================================
+   MODULE 9: ISSUES & SNAGS VIEW
+   ========================================================================== */
+function SnagsView({ issues, projects, onRefresh, onAddSnag, onDelete }: any) {
+  async function updateIssueStatus(id: string, status: string) {
+    await fetch('/api/issues', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, status })
     });
-
-  const [busy, setBusy] =
-    useState(false);
-
-  const [error, setError] =
-    useState('');
+    onRefresh();
+  }
 
   return (
-    <Modal
-      title="New Milestone"
-      close={close}
-      busy={busy}
-      error={error}
-      onSave={async () => {
-        if (!v.name) {
-          setError(
-            'Milestone name is required.'
-          );
-          return;
-        }
-
-        setBusy(true);
-
-        try {
-          await save({
-            project_id:
-              project.id,
-            phase: v.phase,
-            name: v.name,
-            planned_start:
-              v.planned_start,
-            planned_finish:
-              v.planned_finish,
-            status: v.status,
-            progress:
-              Number(
-                v.progress
-              ),
-            responsible_person:
-              v.responsible_person,
-            notes: v.notes
-          });
-        } catch (e: any) {
-          setError(
-            e.message
-          );
-        } finally {
-          setBusy(false);
-        }
-      }}
-    >
-      <label>
-        Phase
-
-        <select
-          value={v.phase}
-          onChange={e =>
-            setV({
-              ...v,
-              phase:
-                e.target.value
-            })
-          }
-        >
-          {phases.map(
-            phase => (
-              <option
-                key={phase}
-                value={phase}
-              >
-                {phase}
-              </option>
-            )
-          )}
-        </select>
-      </label>
-
-      <Field
-        label="Milestone name"
-        value={v.name}
-        onChange={x =>
-          setV({
-            ...v,
-            name: x
-          })
-        }
-        placeholder="e.g. Final Design Approval"
-      />
-
-      <div className="formGrid">
-        <Field
-          label="Planned start"
-          value={
-            v.planned_start
-          }
-          onChange={x =>
-            setV({
-              ...v,
-              planned_start:
-                x
-            })
-          }
-          type="date"
-        />
-
-        <Field
-          label="Planned finish"
-          value={
-            v.planned_finish
-          }
-          onChange={x =>
-            setV({
-              ...v,
-              planned_finish:
-                x
-            })
-          }
-          type="date"
-        />
+    <div>
+      <div className="sectionHead">
+        <div>
+          <h2>Issues & Snag Tracker</h2>
+          <span>Issue &gt; Category &gt; Photo &gt; Responsible person &gt; Deadline &gt; Action &gt; Resolved &gt; Verified &gt; Closed</span>
+        </div>
+        <button className="primary" onClick={onAddSnag}><Plus size={14} /> Log New Snag</button>
       </div>
 
-      <label>
-        Status
-
-        <select
-          value={v.status}
-          onChange={e =>
-            setV({
-              ...v,
-              status:
-                e.target.value
-            })
-          }
-        >
-          {milestoneStatuses.map(
-            status => (
-              <option
-                key={status}
-                value={status}
-              >
-                {status}
-              </option>
-            )
-          )}
-        </select>
-      </label>
-
-      <label>
-        Progress
-
-        <select
-          value={v.progress}
-          onChange={e =>
-            setV({
-              ...v,
-              progress:
-                Number(
-                  e.target.value
-                )
-            })
-          }
-        >
-          {[0, 25, 50, 75, 100].map(
-            value => (
-              <option
-                key={value}
-                value={value}
-              >
-                {value}%
-              </option>
-            )
-          )}
-        </select>
-      </label>
-
-      <Field
-        label="Responsible person"
-        value={
-          v.responsible_person
-        }
-        onChange={x =>
-          setV({
-            ...v,
-            responsible_person:
-              x
-          })
-        }
-        placeholder="e.g. Amit / Site Supervisor"
-      />
-
-      <label>
-        Notes
-
-        <textarea
-          value={v.notes}
-          onChange={e =>
-            setV({
-              ...v,
-              notes:
-                e.target.value
-            })
-          }
-          placeholder="Add milestone notes, dependencies or instructions..."
-          rows={4}
-        />
-      </label>
-    </Modal>
+      <div className="card tableCard">
+        <div className="tableWrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Issue Title</th>
+                <th>Project</th>
+                <th>Category</th>
+                <th>Severity</th>
+                <th>Action Plan</th>
+                <th>Status</th>
+                <th>Quick Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {issues.map((i: any) => (
+                <tr key={i.id}>
+                  <td><b>{i.title}</b></td>
+                  <td>{i.project?.name}</td>
+                  <td><span className="badge">{i.category}</span></td>
+                  <td><StatusBadge>{i.severity}</StatusBadge></td>
+                  <td><small>{i.actionPlan || 'Under investigation'}</small></td>
+                  <td><StatusBadge>{i.status}</StatusBadge></td>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {i.status !== 'Resolved' && (
+                        <button className="small" onClick={() => updateIssueStatus(i.id, 'Resolved')}>
+                          Mark Resolved
+                        </button>
+                      )}
+                      {onDelete && (
+                        <button
+                          className="iconBtn"
+                          style={{ padding: 4, color: '#ef4444' }}
+                          title="Delete Issue"
+                          onClick={() => onDelete('issues', i.id)}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   );
 }
 
-/* =========================
-   COMMON COMPONENTS
-========================= */
+/* ==========================================================================
+   MODULE 10: BOQ & VARIATIONS VIEW
+   ========================================================================== */
+function VariationsView({ variations, projects, onRefresh, onAddVariation, onDelete }: any) {
+  async function approveVariation(id: string) {
+    await fetch('/api/variations', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, status: 'Client Approved' })
+    });
+    onRefresh();
+  }
 
-function Top({
-  title,
-  sub,
-  action
-}: {
-  title: string;
-  sub: string;
-  action?: React.ReactNode;
-}) {
   return (
-    <div className="topLine">
-      <div>
-        <h2>
-          {title}
-        </h2>
+    <div>
+      <div className="sectionHead">
+        <div>
+          <h2>BOQ & Variation Engine</h2>
+          <span>Original BOQ &gt; Addition/Deletion/Material change &gt; Variation request &gt; Cost calculation &gt; Client approval &gt; Revised contract</span>
+        </div>
+        <button className="primary" onClick={onAddVariation}><Plus size={14} /> Create Variation Request</button>
+      </div>
 
+      <div className="card tableCard">
+        <div className="tableWrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Variation No</th>
+                <th>Project</th>
+                <th>Title / Description</th>
+                <th>Type</th>
+                <th>Internal Cost Impact</th>
+                <th>Client Price Impact</th>
+                <th>Approval Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {variations.map((v: any) => (
+                <tr key={v.id}>
+                  <td><b>{v.variationNo}</b></td>
+                  <td>{v.project?.name}</td>
+                  <td>
+                    <b>{v.title}</b>
+                    <div style={{ fontSize: 8, color: '#778397' }}>{v.reason}</div>
+                  </td>
+                  <td><span className="badge">{v.type}</span></td>
+                  <td>{money(v.costDifference)}</td>
+                  <td><b className="goodText">+{money(v.priceImpact)}</b></td>
+                  <td><StatusBadge>{v.status}</StatusBadge></td>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {v.status !== 'Client Approved' && (
+                        <button className="primary" style={{ padding: '4px 8px', fontSize: 9 }} onClick={() => approveVariation(v.id)}>
+                          Approve & Revise Contract
+                        </button>
+                      )}
+                      {onDelete && (
+                        <button
+                          className="iconBtn"
+                          style={{ padding: 4, color: '#ef4444' }}
+                          title="Delete Variation"
+                          onClick={() => onDelete('variations', v.id)}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ==========================================================================
+   MODULE 11: FINANCE & P&L VIEW
+   ========================================================================== */
+function FinanceView({ summary, entries, projects, onRefresh, onAddFinance, onDelete }: any) {
+  return (
+    <div>
+      <div className="sectionHead">
+        <div>
+          <h2>Finance & P&L Analysis</h2>
+          <span>Contract value &gt; Approved variations &gt; Revenue &gt; Material/Labour/Subcontractor costs &gt; Gross profit &gt; Margin</span>
+        </div>
+        <button className="primary" onClick={onAddFinance}><Plus size={14} /> Log Finance Entry</button>
+      </div>
+
+      <div className="card tableCard" style={{ marginBottom: 15 }}>
+        <div className="sectionHead">
+          <h3>Project P&L Breakdown Table</h3>
+        </div>
+        <div className="tableWrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Project Name</th>
+                <th>Contract Value</th>
+                <th>Actual Spent Cost</th>
+                <th>Gross Profit</th>
+                <th>Profit Margin %</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {summary.map((s: any) => (
+                <tr key={s.id}>
+                  <td><b>{s.name}</b></td>
+                  <td>{money(s.contractValue)}</td>
+                  <td>{money(s.actualCost)}</td>
+                  <td><b className="goodText">{money(s.grossProfit)}</b></td>
+                  <td><b className="goodText">{s.margin}%</b></td>
+                  <td>
+                    {onDelete && (
+                      <button
+                        className="iconBtn"
+                        style={{ padding: 4, color: '#ef4444' }}
+                        title="Delete Finance Entry"
+                        onClick={() => onDelete('finance', s.id)}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ==========================================================================
+   MODULE 12: CLIENT PORTAL VIEW
+   ========================================================================== */
+function ClientPortalView({ projects, approvals, siteReports, onRefresh, onAddApproval, onDelete }: any) {
+  async function updateApproval(id: string, status: string) {
+    await fetch('/api/approvals', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, status })
+    });
+    onRefresh();
+  }
+
+  return (
+    <div>
+      <div className="hero" style={{ background: 'linear-gradient(135deg,#0f172a,#1e293b)' }}>
+        <h2>Solusi Design — Executive Client Portal</h2>
         <p>
-          {sub}
+          Welcome Aarav Mehta (TechCorp Solutions India). Real-time project progress timeline, 
+          design 3D approvals, site photo feeds & payment schedule.
         </p>
       </div>
 
-      {action}
-    </div>
-  );
-}
+      <div className="twoCols" style={{ marginTop: 15 }}>
+        <div className="card">
+          <div className="sectionHead">
+            <h3>Pending Client Approvals ({approvals.length})</h3>
+            <button className="small" onClick={onAddApproval}><Plus size={12} /> New Approval Request</button>
+          </div>
+          <div className="list">
+            {approvals.map((a: any) => (
+              <div key={a.id} className="listItem" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <b>{a.title}</b>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <StatusBadge>{a.status}</StatusBadge>
+                    {onDelete && (
+                      <button
+                        className="iconBtn"
+                        style={{ padding: 4, color: '#ef4444' }}
+                        title="Delete Approval Request"
+                        onClick={() => onDelete('approvals', a.id)}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <small>Type: {a.type} • Requested for {a.project?.name}</small>
 
-function Table({
-  headers,
-  rows
-}: {
-  headers: string[];
-  rows: React.ReactNode[][];
-}) {
-  return (
-    <div className="tableWrap">
-      <table>
-        <thead>
-          <tr>
-            {headers.map(
-              h => (
-                <th key={h}>
-                  {h}
-                </th>
-              )
-            )}
-          </tr>
-        </thead>
-
-        <tbody>
-          {rows.map(
-            (r, i) => (
-              <tr key={i}>
-                {r.map(
-                  (c, j) => (
-                    <td
-                      key={j}
-                    >
-                      {c}
-                    </td>
-                  )
+                {a.status === 'Pending' && (
+                  <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                    <button className="primary" style={{ fontSize: 9, padding: '4px 10px' }} onClick={() => updateApproval(a.id, 'Approved')}>
+                      Approve Request
+                    </button>
+                    <button className="small" style={{ fontSize: 9 }} onClick={() => updateApproval(a.id, 'Rejected')}>
+                      Request Revision
+                    </button>
+                  </div>
                 )}
-              </tr>
-            )
-          )}
-        </tbody>
-      </table>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="sectionHead">
+            <h3>Live Site Photos & Progress</h3>
+          </div>
+          {siteReports.slice(0, 2).map((r: any) => (
+            <div key={r.id} style={{ marginBottom: 12 }}>
+              <b>{r.project?.name} ({new Date(r.reportDate).toLocaleDateString()})</b>
+              <p style={{ fontSize: 10, margin: '4px 0', color: '#4a5568' }}>{r.workCompleted}</p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                {r.photos?.map((p: any) => (
+                  <img key={p.id} src={p.imageUrl} alt="Site" style={{ width: '100%', height: 100, objectFit: 'cover', borderRadius: 8 }} />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
 
-function Empty({
-  text
-}: {
-  text: string;
-}) {
+/* ==========================================================================
+   CREATION MODALS FOR ALL 12 MODULES
+   ========================================================================== */
+
+function DashboardSelectorModal({ onSelect, onClose }: any) {
+  const options = [
+    { key: 'crm', title: 'New CRM Lead', desc: 'Add new lead or sales opportunity' },
+    { key: 'projects', title: 'New Project Master', desc: 'Initialize project & execution milestones' },
+    { key: 'quotations', title: 'Create Commercial Quotation', desc: 'Build BOQ cost breakdown & price quote' },
+    { key: 'design', title: 'Upload Design / Moodboard', desc: 'Add 3D render or material palette' },
+    { key: 'site', title: 'Log Daily Site Report', desc: 'Record supervisor log & site photos' },
+    { key: 'labour', title: 'Add Trade Worker / Assignment', desc: 'Assign worker to task' },
+    { key: 'procurement', title: 'Add Material / Vendor PO', desc: 'Catalog material or create purchase order' },
+    { key: 'snags', title: 'Log Issue or Site Snag', desc: 'Report defect or quality snag' },
+    { key: 'variations', title: 'Create Variation Request', desc: 'Submit scope change or cost variation' },
+    { key: 'finance', title: 'Log Finance Entry', desc: 'Record invoice, payment or expense' }
+  ];
+
   return (
-    <div className="empty">
-      {text}
+    <div className="modalBackdrop">
+      <div className="modal" style={{ width: 'min(640px, 100%)' }}>
+        <div className="modalHead">
+          <div>
+            <h2>Select Record Type to Create</h2>
+            <small>SOLUSI OS QUICK ACTION</small>
+          </div>
+          <button onClick={onClose}>✕</button>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
+          {options.map(opt => (
+            <div
+              key={opt.key}
+              className="card"
+              style={{ cursor: 'pointer', padding: 12, border: '1px solid #e7ebf0' }}
+              onClick={() => onSelect(opt.key)}
+            >
+              <b style={{ fontSize: 12, display: 'block', color: '#101827' }}>{opt.title}</b>
+              <small style={{ fontSize: 9, color: '#778397' }}>{opt.desc}</small>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
 
-function ShieldDot() {
-  return (
-    <div
-      style={{
-        width: 14,
-        height: 14,
-        borderRadius: 4,
-        background:
-          '#e8f6ee'
-      }}
-    />
-  );
-}
+function CreateLeadModal({ clients, onClose, onSuccess }: any) {
+  const [form, setForm] = useState({
+    contactName: '',
+    companyName: '',
+    phone: '',
+    email: '',
+    projectType: 'Office Workspace',
+    estimatedBudget: ''
+  });
 
-function Field({
-  label,
-  value,
-  onChange,
-  placeholder,
-  type = 'text'
-}: {
-  label: string;
-  value: string;
-  onChange: (
-    x: string
-  ) => void;
-  placeholder?: string;
-  type?: string;
-}) {
-  return (
-    <label>
-      {label}
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    await fetch('/api/leads', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form)
+    });
+    onSuccess();
+    onClose();
+  }
 
-      <input
-        type={type}
-        value={value}
-        onChange={e =>
-          onChange(
-            e.target.value
-          )
-        }
-        placeholder={
-          placeholder
-        }
-      />
-    </label>
-  );
-}
-
-function Modal({
-  title,
-  close,
-  onSave,
-  busy,
-  error,
-  children
-}: {
-  title: string;
-  close: () => void;
-  onSave: () => Promise<void>;
-  busy: boolean;
-  error: string;
-  children: React.ReactNode;
-}) {
   return (
-    <div
-      className="modalBackdrop"
-      onMouseDown={e =>
-        e.target ===
-          e.currentTarget &&
-        close()
-      }
-    >
+    <div className="modalBackdrop">
       <div className="modal">
         <div className="modalHead">
           <div>
-            <small>
-              SOLUSI OS
-            </small>
-
-            <h2>
-              {title}
-            </h2>
+            <h2>Create New CRM Lead</h2>
+            <small>SALES & CRM PIPELINE</small>
           </div>
-
-          <button
-            onClick={close}
-          >
-            <X size={18} />
-          </button>
+          <button onClick={onClose}>✕</button>
         </div>
-
-        <div className="modalBody">
-          {children}
-        </div>
-
-        {error && (
-          <div className="authError">
-            {error}
+        <form onSubmit={handleSubmit}>
+          <label>Contact Name <input required value={form.contactName} onChange={e => setForm({ ...form, contactName: e.target.value })} /></label>
+          <label>Company Name <input value={form.companyName} onChange={e => setForm({ ...form, companyName: e.target.value })} /></label>
+          <div className="formGrid">
+            <label>Phone <input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} /></label>
+            <label>Email <input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></label>
           </div>
-        )}
+          <label>Estimated Budget (₹) <input type="number" value={form.estimatedBudget} onChange={e => setForm({ ...form, estimatedBudget: e.target.value })} /></label>
+          <button className="primary fullButton" type="submit">Create Lead</button>
+        </form>
+      </div>
+    </div>
+  );
+}
 
-        <button
-          className="primary fullButton"
-          disabled={busy}
-          onClick={onSave}
-        >
-          {busy
-            ? 'Saving…'
-            : 'Save record'}
-        </button>
+function CreateProjectModal({ clients, onClose, onSuccess }: any) {
+  const [form, setForm] = useState({
+    name: '',
+    location: '',
+    contractValue: '',
+    approvedBudget: '',
+    clientId: clients[0]?.id || ''
+  });
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    await fetch('/api/projects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form)
+    });
+    onSuccess();
+    onClose();
+  }
+
+  return (
+    <div className="modalBackdrop">
+      <div className="modal">
+        <div className="modalHead">
+          <div>
+            <h2>Create New Project Master</h2>
+            <small>PROJECT MASTER & EXECUTION</small>
+          </div>
+          <button onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <label>Project Name <input required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></label>
+          <label>Location <input value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} /></label>
+          <div className="formGrid">
+            <label>Contract Value (₹) <input type="number" value={form.contractValue} onChange={e => setForm({ ...form, contractValue: e.target.value })} /></label>
+            <label>Approved Budget (₹) <input type="number" value={form.approvedBudget} onChange={e => setForm({ ...form, approvedBudget: e.target.value })} /></label>
+          </div>
+          <button className="primary fullButton" type="submit">Initialize Project & Milestones</button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function EditProjectFinancialsModal({ project, onClose, onSuccess }: any) {
+  const [form, setForm] = useState({
+    contractValue: project?.contractValue || 0,
+    approvedBudget: project?.approvedBudget || 0,
+    actualCost: project?.actualCost || 0,
+    progress: project?.progress || 0,
+    status: project?.status || 'In Progress'
+  });
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    await fetch('/api/projects', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: project.id,
+        contractValue: form.contractValue,
+        approvedBudget: form.approvedBudget,
+        actualCost: form.actualCost,
+        progress: form.progress,
+        status: form.status
+      })
+    });
+    onSuccess();
+    onClose();
+  }
+
+  return (
+    <div className="modalBackdrop">
+      <div className="modal">
+        <div className="modalHead">
+          <div>
+            <h2>Edit Project Metrics & Financials</h2>
+            <small>CONTROL CONTRACT VALUE, BUDGET, SPENT COST & PROGRESS</small>
+          </div>
+          <button onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="formGrid">
+            <label>
+              Contract Value (₹)
+              <span style={{ fontSize: 8, color: '#778397', display: 'block', fontWeight: 400 }}>Client contract price</span>
+              <input type="number" step="any" value={form.contractValue} onChange={e => setForm({ ...form, contractValue: parseFloat(e.target.value) || 0 })} />
+            </label>
+            <label>
+              Approved Budget (₹)
+              <span style={{ fontSize: 8, color: '#778397', display: 'block', fontWeight: 400 }}>Internal cost budget</span>
+              <input type="number" step="any" value={form.approvedBudget} onChange={e => setForm({ ...form, approvedBudget: parseFloat(e.target.value) || 0 })} />
+            </label>
+          </div>
+          <div className="formGrid">
+            <label>
+              Actual Spent Cost (₹)
+              <span style={{ fontSize: 8, color: '#778397', display: 'block', fontWeight: 400 }}>Total incurred spent cost</span>
+              <input type="number" step="any" value={form.actualCost} onChange={e => setForm({ ...form, actualCost: parseFloat(e.target.value) || 0 })} />
+            </label>
+            <label>
+              Overall Progress (%)
+              <span style={{ fontSize: 8, color: '#778397', display: 'block', fontWeight: 400 }}>Site completion percentage</span>
+              <input type="number" min="0" max="100" value={form.progress} onChange={e => setForm({ ...form, progress: parseInt(e.target.value) || 0 })} />
+            </label>
+          </div>
+          <label>
+            Project Execution Status
+            <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
+              <option value="Planning">Planning</option>
+              <option value="In Progress">In Progress</option>
+              <option value="On Track">On Track</option>
+              <option value="Delayed">Delayed</option>
+              <option value="Completed">Completed</option>
+            </select>
+          </label>
+          <button className="primary fullButton" type="submit">Save Changes</button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function CreateQuotationModal({ projects, clients, onClose, onSuccess }: any) {
+  const [form, setForm] = useState({
+    title: '',
+    projectId: projects[0]?.id || '',
+    materialCost: '',
+    labourCost: '',
+    overheads: '',
+    markupPct: '18'
+  });
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    await fetch('/api/quotations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form)
+    });
+    onSuccess();
+    onClose();
+  }
+
+  return (
+    <div className="modalBackdrop">
+      <div className="modal">
+        <div className="modalHead">
+          <div>
+            <h2>Create Commercial Quotation</h2>
+            <small>QUOTATIONS & BOQ ENGINE</small>
+          </div>
+          <button onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <label>Quotation Title <input required value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="e.g. Turnkey Fitout Commercial Package" /></label>
+          <label>Project
+            <select value={form.projectId} onChange={e => setForm({ ...form, projectId: e.target.value })}>
+              {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </label>
+          <div className="formGrid">
+            <label>Estimated Material Cost (₹) <input type="number" value={form.materialCost} onChange={e => setForm({ ...form, materialCost: e.target.value })} /></label>
+            <label>Estimated Labour Cost (₹) <input type="number" value={form.labourCost} onChange={e => setForm({ ...form, labourCost: e.target.value })} /></label>
+          </div>
+          <div className="formGrid">
+            <label>Overheads (₹) <input type="number" value={form.overheads} onChange={e => setForm({ ...form, overheads: e.target.value })} /></label>
+            <label>Markup Target % <input type="number" value={form.markupPct} onChange={e => setForm({ ...form, markupPct: e.target.value })} /></label>
+          </div>
+          <button className="primary fullButton" type="submit">Generate Quotation</button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function CreateDesignModal({ projects, onClose, onSuccess }: any) {
+  const [form, setForm] = useState({
+    title: '',
+    projectId: projects[0]?.id || '',
+    designType: '3D Render',
+    fileUrl: '',
+    notes: ''
+  });
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    await fetch('/api/design', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form)
+    });
+    onSuccess();
+    onClose();
+  }
+
+  return (
+    <div className="modalBackdrop">
+      <div className="modal">
+        <div className="modalHead">
+          <div>
+            <h2>Add Design Item or Moodboard</h2>
+            <small>DESIGN STUDIO</small>
+          </div>
+          <button onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <label>Title <input required value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="e.g. Executive Boardroom 3D Render" /></label>
+          <label>Project
+            <select value={form.projectId} onChange={e => setForm({ ...form, projectId: e.target.value })}>
+              {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </label>
+          <label>Design Deliverable Type
+            <select value={form.designType} onChange={e => setForm({ ...form, designType: e.target.value })}>
+              <option value="3D Render">3D Render</option>
+              <option value="Layout 2D">Layout 2D Floorplan</option>
+              <option value="moodboard">Moodboard Material Palette</option>
+              <option value="Working Drawing">Working Drawing Package</option>
+            </select>
+          </label>
+          <label>Image or File URL <input value={form.fileUrl} onChange={e => setForm({ ...form, fileUrl: e.target.value })} placeholder="https://..." /></label>
+          <label>Designer Notes <input value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></label>
+          <button className="primary fullButton" type="submit">Submit to Design Studio</button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function CreateSiteReportModal({ projects, onClose, onSuccess }: any) {
+  const [form, setForm] = useState({
+    projectId: projects[0]?.id || '',
+    labourPresent: '20',
+    workCompleted: '',
+    materialsRecd: '',
+    photoUrl: '',
+    photoCaption: ''
+  });
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    await fetch('/api/site-reports', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form)
+    });
+    onSuccess();
+    onClose();
+  }
+
+  return (
+    <div className="modalBackdrop">
+      <div className="modal">
+        <div className="modalHead">
+          <div>
+            <h2>Log Daily Site Report</h2>
+            <small>SITE CONTROL</small>
+          </div>
+          <button onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <label>Project
+            <select value={form.projectId} onChange={e => setForm({ ...form, projectId: e.target.value })}>
+              {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </label>
+          <label>Labour Count Present <input type="number" value={form.labourPresent} onChange={e => setForm({ ...form, labourPresent: e.target.value })} /></label>
+          <label>Work Completed Today <textarea rows={3} style={{ width: '100%', marginTop: 5, padding: 8 }} required value={form.workCompleted} onChange={e => setForm({ ...form, workCompleted: e.target.value })} /></label>
+          <label>Materials Received <input value={form.materialsRecd} onChange={e => setForm({ ...form, materialsRecd: e.target.value })} /></label>
+          <label>Site Progress Image / Photo URL <input value={form.photoUrl} onChange={e => setForm({ ...form, photoUrl: e.target.value })} placeholder="https://images.unsplash.com/..." /></label>
+          <label>Photo Caption <input value={form.photoCaption} onChange={e => setForm({ ...form, photoCaption: e.target.value })} placeholder="e.g. Partition framing completed in Zone A" /></label>
+          <button className="primary fullButton" type="submit">Submit Site Report</button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function CreateLabourModal({ projects, onClose, onSuccess }: any) {
+  const [form, setForm] = useState({
+    type: 'worker',
+    name: '',
+    trade: 'Carpentry',
+    dailyRate: '',
+    phone: '',
+    projectId: projects[0]?.id || '',
+    taskName: ''
+  });
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    await fetch('/api/labour', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form)
+    });
+    onSuccess();
+    onClose();
+  }
+
+  return (
+    <div className="modalBackdrop">
+      <div className="modal">
+        <div className="modalHead">
+          <div>
+            <h2>Add Trade Contractor / Assignment</h2>
+            <small>LABOUR MANAGEMENT</small>
+          </div>
+          <button onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <label>Entry Type
+            <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
+              <option value="worker">New Trade Contractor / Worker</option>
+              <option value="assignment">New Task Assignment</option>
+            </select>
+          </label>
+
+          {form.type === 'worker' ? (
+            <>
+              <label>Contractor / Worker Name <input required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></label>
+              <label>Trade Specialization
+                <select value={form.trade} onChange={e => setForm({ ...form, trade: e.target.value })}>
+                  <option value="Carpentry">Carpentry</option>
+                  <option value="Electrician">Electrician</option>
+                  <option value="Plumbing">Plumbing</option>
+                  <option value="Mason">Mason</option>
+                  <option value="Painter">Painter</option>
+                  <option value="False Ceiling">False Ceiling</option>
+                  <option value="HVAC Specialist">HVAC Specialist</option>
+                </select>
+              </label>
+              <div className="formGrid">
+                <label>Daily Rate (₹) <input type="number" value={form.dailyRate} onChange={e => setForm({ ...form, dailyRate: e.target.value })} /></label>
+                <label>Phone <input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} /></label>
+              </div>
+            </>
+          ) : (
+            <>
+              <label>Project
+                <select value={form.projectId} onChange={e => setForm({ ...form, projectId: e.target.value })}>
+                  {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </label>
+              <label>Task Description <input required value={form.taskName} onChange={e => setForm({ ...form, taskName: e.target.value })} /></label>
+            </>
+          )}
+
+          <button className="primary fullButton" type="submit">Save Labour Record</button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function CreateProcurementModal({ projects, onClose, onSuccess }: any) {
+  const [form, setForm] = useState({
+    type: 'material',
+    name: '',
+    category: 'Woodwork',
+    unit: 'sqft',
+    unitRate: '',
+    stockQty: '',
+    vendorName: '',
+    projectId: projects[0]?.id || '',
+    totalAmount: ''
+  });
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    await fetch('/api/procurement', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form)
+    });
+    onSuccess();
+    onClose();
+  }
+
+  return (
+    <div className="modalBackdrop">
+      <div className="modal">
+        <div className="modalHead">
+          <div>
+            <h2>Add Material / Purchase Order</h2>
+            <small>MATERIAL & PROCUREMENT</small>
+          </div>
+          <button onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <label>Entry Type
+            <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
+              <option value="material">New Catalog Material</option>
+              <option value="po">New Vendor Purchase Order (PO)</option>
+            </select>
+          </label>
+
+          {form.type === 'material' ? (
+            <>
+              <label>Material Name <input required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></label>
+              <div className="formGrid">
+                <label>Category <input value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} /></label>
+                <label>Unit (sqft, rft, nos) <input value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })} /></label>
+              </div>
+              <div className="formGrid">
+                <label>Unit Rate (₹) <input type="number" value={form.unitRate} onChange={e => setForm({ ...form, unitRate: e.target.value })} /></label>
+                <label>Stock Qty <input type="number" value={form.stockQty} onChange={e => setForm({ ...form, stockQty: e.target.value })} /></label>
+              </div>
+            </>
+          ) : (
+            <>
+              <label>Vendor / Supplier Name <input required value={form.vendorName} onChange={e => setForm({ ...form, vendorName: e.target.value })} /></label>
+              <label>Project
+                <select value={form.projectId} onChange={e => setForm({ ...form, projectId: e.target.value })}>
+                  {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </label>
+              <label>Total PO Amount (₹) <input type="number" required value={form.totalAmount} onChange={e => setForm({ ...form, totalAmount: e.target.value })} /></label>
+            </>
+          )}
+
+          <button className="primary fullButton" type="submit">Save Procurement Record</button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function CreateSnagModal({ projects, onClose, onSuccess }: any) {
+  const [form, setForm] = useState({
+    title: '',
+    projectId: projects[0]?.id || '',
+    category: 'Quality',
+    severity: 'Medium',
+    description: '',
+    actionPlan: ''
+  });
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    await fetch('/api/issues', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form)
+    });
+    onSuccess();
+    onClose();
+  }
+
+  return (
+    <div className="modalBackdrop">
+      <div className="modal">
+        <div className="modalHead">
+          <div>
+            <h2>Log Issue or Site Snag</h2>
+            <small>ISSUES & SNAG TRACKER</small>
+          </div>
+          <button onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <label>Issue Title <input required value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="e.g. Door frame alignment discrepancy" /></label>
+          <label>Project
+            <select value={form.projectId} onChange={e => setForm({ ...form, projectId: e.target.value })}>
+              {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </label>
+          <div className="formGrid">
+            <label>Category
+              <select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>
+                <option value="Quality">Quality</option>
+                <option value="Safety">Safety</option>
+                <option value="Design Mismatch">Design Mismatch</option>
+                <option value="Damage">Damage</option>
+                <option value="Delay">Delay</option>
+              </select>
+            </label>
+            <label>Severity
+              <select value={form.severity} onChange={e => setForm({ ...form, severity: e.target.value })}>
+                <option value="Low">Low</option>
+                <option value="Medium">Medium</option>
+                <option value="High">High</option>
+                <option value="Critical">Critical</option>
+              </select>
+            </label>
+          </div>
+          <label>Action Plan <input value={form.actionPlan} onChange={e => setForm({ ...form, actionPlan: e.target.value })} placeholder="Immediate steps to resolve" /></label>
+          <button className="primary fullButton" type="submit">Submit Issue</button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function CreateVariationModal({ projects, onClose, onSuccess }: any) {
+  const [form, setForm] = useState({
+    title: '',
+    projectId: projects[0]?.id || '',
+    type: 'Addition',
+    reason: '',
+    costDifference: '',
+    priceImpact: ''
+  });
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    await fetch('/api/variations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form)
+    });
+    onSuccess();
+    onClose();
+  }
+
+  return (
+    <div className="modalBackdrop">
+      <div className="modal">
+        <div className="modalHead">
+          <div>
+            <h2>Create Variation Request</h2>
+            <small>BOQ & VARIATION ENGINE</small>
+          </div>
+          <button onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <label>Variation Title <input required value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="e.g. Additional Acoustic Paneling in Main Bay" /></label>
+          <label>Project
+            <select value={form.projectId} onChange={e => setForm({ ...form, projectId: e.target.value })}>
+              {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </label>
+          <label>Variation Type
+            <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
+              <option value="Addition">Scope Addition</option>
+              <option value="Deletion">Scope Deletion</option>
+              <option value="Material Change">Material Upgrade / Change</option>
+            </select>
+          </label>
+          <div className="formGrid">
+            <label>Internal Cost Impact (₹) <input type="number" value={form.costDifference} onChange={e => setForm({ ...form, costDifference: e.target.value })} /></label>
+            <label>Client Price Impact (₹) <input type="number" value={form.priceImpact} onChange={e => setForm({ ...form, priceImpact: e.target.value })} /></label>
+          </div>
+          <label>Reason / Justification <input value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} /></label>
+          <button className="primary fullButton" type="submit">Submit Variation Request</button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function CreateFinanceModal({ projects, onClose, onSuccess }: any) {
+  const [form, setForm] = useState({
+    type: 'Invoice',
+    projectId: projects[0]?.id || '',
+    category: 'Milestone Payment',
+    referenceNo: '',
+    amount: '',
+    paymentMode: 'Bank Transfer',
+    notes: ''
+  });
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    await fetch('/api/finance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form)
+    });
+    onSuccess();
+    onClose();
+  }
+
+  return (
+    <div className="modalBackdrop">
+      <div className="modal">
+        <div className="modalHead">
+          <div>
+            <h2>Log Finance Entry</h2>
+            <small>FINANCE & P&L ANALYSIS</small>
+          </div>
+          <button onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <label>Transaction Type
+            <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
+              <option value="Invoice">Client Invoice Generated</option>
+              <option value="Client Payment">Client Payment Received</option>
+              <option value="Material Cost">Material Expense</option>
+              <option value="Labour Cost">Labour Payout</option>
+              <option value="Subcontractor Cost">Subcontractor Payout</option>
+              <option value="Overhead">Overhead Expense</option>
+            </select>
+          </label>
+          <label>Project
+            <select value={form.projectId} onChange={e => setForm({ ...form, projectId: e.target.value })}>
+              {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </label>
+          <div className="formGrid">
+            <label>Amount (₹) <input type="number" required value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></label>
+            <label>Reference / Inv No <input value={form.referenceNo} onChange={e => setForm({ ...form, referenceNo: e.target.value })} /></label>
+          </div>
+          <button className="primary fullButton" type="submit">Record Financial Transaction</button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function CreateApprovalModal({ projects, onClose, onSuccess }: any) {
+  const [form, setForm] = useState({
+    title: '',
+    projectId: projects[0]?.id || '',
+    type: 'Design',
+    clientNote: ''
+  });
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    await fetch('/api/approvals', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form)
+    });
+    onSuccess();
+    onClose();
+  }
+
+  return (
+    <div className="modalBackdrop">
+      <div className="modal">
+        <div className="modalHead">
+          <div>
+            <h2>Request Client Approval</h2>
+            <small>EXECUTIVE CLIENT PORTAL</small>
+          </div>
+          <button onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <label>Approval Title <input required value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="e.g. Boardroom Glass Specification Approval" /></label>
+          <label>Project
+            <select value={form.projectId} onChange={e => setForm({ ...form, projectId: e.target.value })}>
+              {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </label>
+          <label>Type
+            <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
+              <option value="Design">Design Render</option>
+              <option value="Moodboard">Material Moodboard</option>
+              <option value="Quotation">BOQ Quotation</option>
+              <option value="Variation">Variation Request</option>
+            </select>
+          </label>
+          <button className="primary fullButton" type="submit">Send Approval Request to Client</button>
+        </form>
       </div>
     </div>
   );

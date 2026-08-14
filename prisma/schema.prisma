@@ -1,0 +1,432 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// User Profile / Staff / Roles
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String
+  role      String   @default("admin") // owner, admin, pm, designer, supervisor, purchase, accounts, client
+  phone     String?
+  avatar    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  managedProjects   Project[]         @relation("ProjectManager")
+  supervisedProjects Project[]        @relation("Supervisor")
+  leads             Lead[]
+  siteReports       SiteReport[]
+  tasks             Task[]
+  issues            Issue[]
+  purchaseOrders    PurchaseOrder[]
+}
+
+// Phase 1 & Phase 2: Client & Lead / CRM
+model Client {
+  id               String   @id @default(uuid())
+  name             String
+  company          String?
+  email            String?
+  phone            String?
+  city             String?
+  unitBuildingName String?
+  unitNumber       String?
+  status           String   @default("Active") // Active, Prospect, Inactive
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  projects   Project[]
+  leads      Lead[]
+  quotations Quotation[]
+}
+
+model Lead {
+  id              String    @id @default(uuid())
+  clientId        String?
+  client          Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  contactName     String
+  companyName     String?
+  phone           String?
+  email           String?
+  projectType     String    @default("Office") // Office, Retail, F&B, Hospitality, Healthcare
+  estimatedArea   Float?    // sq ft
+  estimatedBudget Float?
+  stage           String    @default("Lead") // Lead, Prospect, Site Visit, Requirement, Design Discussion, Quotation, Negotiation, Won, Lost
+  siteVisitDate   DateTime?
+  notes           String?
+  assignedToId    String?
+  assignedTo      User?     @relation(fields: [assignedToId], references: [id])
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  quotations Quotation[]
+  project    Project?
+}
+
+// Phase 1 & 5 & 10 & 11: Project Master
+model Project {
+  id               String   @id @default(uuid())
+  name             String
+  code             String   @unique
+  clientId         String?
+  client           Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  leadId           String?  @unique
+  lead             Lead?    @relation(fields: [leadId], references: [id])
+  location         String?
+  areaSqFt         Float?
+  contractValue    Float    @default(0)
+  approvedBudget   Float    @default(0)
+  actualCost       Float    @default(0)
+  progress         Float    @default(0)
+  status           String   @default("Planning") // Planning, On Track, At Risk, Delayed, Completed, Handover
+  projectManagerId String?
+  projectManager   User?    @relation("ProjectManager", fields: [projectManagerId], references: [id])
+  supervisorId     String?
+  supervisor       User?    @relation("Supervisor", fields: [supervisorId], references: [id])
+  startDate        DateTime?
+  dueDate          DateTime?
+  completedDate    DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  milestones        Milestone[]
+  tasks             Task[]
+  siteReports       SiteReport[]
+  designItems       DesignItem[]
+  moodboards        Moodboard[]
+  approvals         ClientApproval[]
+  quotations        Quotation[]
+  boqLines          BoqLine[]
+  variations        VariationRequest[]
+  purchaseOrders    PurchaseOrder[]
+  materials         InventoryTransaction[]
+  issues            Issue[]
+  labourAssignments LabourAssignment[]
+  financeEntries    FinanceEntry[]
+}
+
+// Phase 5: Project Execution & Milestones
+model Milestone {
+  id                String    @id @default(uuid())
+  projectId         String
+  project           Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  phase             String    // Pre-Execution, Design, Procurement, Civil & MEP, Furniture & Interiors, Finalisation, Commercial Closure
+  name              String
+  plannedStart      DateTime?
+  plannedFinish     DateTime?
+  actualFinish      DateTime?
+  status            String    @default("Pending") // Pending, In Progress, Done, Delayed, On Hold
+  progress          Float     @default(0)
+  responsiblePerson String?
+  notes             String?
+  sortOrder         Int       @default(0)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  tasks Task[]
+}
+
+// Phase 5 & 7: Tasks & Checklists
+model Task {
+  id           String    @id @default(uuid())
+  projectId    String
+  project      Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestoneId  String?
+  milestone    Milestone? @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+  title        String
+  category     String?   // Civil, MEP, Woodwork, Glass, Painting, HVAC, General
+  priority     String    @default("Medium") // High, Medium, Low
+  status       String    @default("Pending") // Pending, In Progress, Completed
+  assignedToId String?
+  assignedTo   User?     @relation(fields: [assignedToId], references: [id])
+  trade        String?   // Carpentry, Electrician, Plumber, Mason, Painter, POP
+  dueDate      DateTime?
+  completedAt  DateTime?
+  sopStep      String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+// Phase 4: Design Studio
+model DesignItem {
+  id        String   @id @default(uuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  type      String   // Measurement, Concept, Layout 2D, 3D Render, Material Spec, Working Drawing
+  title     String
+  fileUrl   String?
+  version   Int      @default(1)
+  status    String   @default("Draft") // Draft, Review, Approved, Revised
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  approvals ClientApproval[]
+}
+
+model Moodboard {
+  id          String   @id @default(uuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  version     Int      @default(1)
+  status      String   @default("Draft") // Draft, Submitted, Approved, Rejected
+  shareToken  String   @unique @default(uuid())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items     MoodboardItem[]
+  approvals ClientApproval[]
+}
+
+model MoodboardItem {
+  id          String    @id @default(uuid())
+  moodboardId String
+  moodboard   Moodboard @relation(fields: [moodboardId], references: [id], onDelete: Cascade)
+  materialId  String?
+  material    Material? @relation(fields: [materialId], references: [id], onDelete: SetNull)
+  title       String
+  imageUrl    String?
+  category    String?
+  position    Int       @default(0)
+}
+
+// Client Approval Engine for Design / Moodboard / Variations / BOQ
+model ClientApproval {
+  id           String            @id @default(uuid())
+  projectId    String
+  project      Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  type         String            // Design, Moodboard, Material, Quotation, Variation
+  title        String
+  designItemId String?
+  designItem   DesignItem?       @relation(fields: [designItemId], references: [id])
+  moodboardId  String?
+  moodboard    Moodboard?        @relation(fields: [moodboardId], references: [id])
+  variationId  String?
+  variation    VariationRequest? @relation(fields: [variationId], references: [id])
+  status       String            @default("Pending") // Pending, Approved, Rejected, Revision Requested
+  clientNote   String?
+  decidedAt    DateTime?
+  createdAt    DateTime          @default(now())
+}
+
+// Phase 6: Site Control
+model SiteReport {
+  id            String      @id @default(uuid())
+  projectId     String
+  project       Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  supervisorId  String?
+  supervisor    User?       @relation(fields: [supervisorId], references: [id])
+  reportDate    DateTime    @default(now())
+  labourPresent Int         @default(0)
+  workCompleted String
+  materialsRecd String?
+  remarks       String?
+  weather       String?     @default("Clear")
+  createdAt     DateTime    @default(now())
+
+  photos SitePhoto[]
+}
+
+model SitePhoto {
+  id         String     @id @default(uuid())
+  reportId   String
+  siteReport SiteReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  imageUrl   String
+  caption    String?
+  tag        String?    // Progress, Issue, Quality, Material
+  createdAt  DateTime   @default(now())
+}
+
+// Phase 7: Labour Management
+model TradeWorker {
+  id        String   @id @default(uuid())
+  name      String
+  trade     String   // Carpentry, Electrician, Plumbing, Civil, Painting, False Ceiling, HVAC
+  phone     String?
+  dailyRate Float    @default(0)
+  rating    Float    @default(5.0)
+  status    String   @default("Active")
+  createdAt DateTime @default(now())
+
+  assignments LabourAssignment[]
+}
+
+model LabourAssignment {
+  id            String      @id @default(uuid())
+  projectId     String
+  project       Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  workerId      String
+  worker        TradeWorker @relation(fields: [workerId], references: [id])
+  taskName      String
+  assignedDate  DateTime    @default(now())
+  dueDate       DateTime?
+  completionPct Float       @default(0)
+  status        String      @default("Assigned") // Assigned, In Progress, Completed, Delayed
+  notes         String?
+  createdAt     DateTime    @default(now())
+}
+
+// Phase 8: Material & Procurement
+model Material {
+  id        String   @id @default(uuid())
+  code      String   @unique
+  name      String
+  category  String   // Flooring, Lighting, Furniture, Hardware, Paint, Glass, Plumbing, Electrical
+  unit      String   // sqft, rft, nos, ltr, box, set
+  supplier  String?
+  unitRate  Float    @default(0)
+  stockQty  Float    @default(0)
+  imageUrl  String?
+  createdAt DateTime @default(now())
+
+  moodboardItems MoodboardItem[]
+  inventoryTxns  InventoryTransaction[]
+  poItems        PurchaseOrderItem[]
+}
+
+model InventoryTransaction {
+  id         String   @id @default(uuid())
+  materialId String
+  material   Material @relation(fields: [materialId], references: [id])
+  projectId  String?
+  project    Project? @relation(fields: [projectId], references: [id])
+  type       String   // Stock_In, Reserve, Issue, Return, Adjustment
+  quantity   Float
+  unitRate   Float    @default(0)
+  reference  String?
+  createdAt  DateTime @default(now())
+}
+
+model PurchaseOrder {
+  id           String    @id @default(uuid())
+  poNo         String    @unique
+  projectId    String
+  project      Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  vendorName   String
+  status       String    @default("Draft") // Draft, Approved, Ordered, Partially Received, Delivered, Cancelled
+  totalAmount  Float     @default(0)
+  expectedDate DateTime?
+  createdById  String?
+  createdBy    User?     @relation(fields: [createdById], references: [id])
+  createdAt    DateTime  @default(now())
+
+  items PurchaseOrderItem[]
+}
+
+model PurchaseOrderItem {
+  id          String        @id @default(uuid())
+  poId        String
+  po          PurchaseOrder @relation(fields: [poId], references: [id], onDelete: Cascade)
+  materialId  String?
+  material    Material?     @relation(fields: [materialId], references: [id])
+  itemName    String
+  quantity    Float
+  unitRate    Float
+  total       Float
+  receivedQty Float         @default(0)
+}
+
+// Phase 9: Issues & Snags
+model Issue {
+  id           String    @id @default(uuid())
+  projectId    String
+  project      Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title        String
+  category     String    @default("Quality") // Safety, Quality, Design Mismatch, Delay, Damage, Material Defect
+  severity     String    @default("Medium") // Critical, High, Medium, Low
+  status       String    @default("Open") // Open, Action Taken, Resolved, Verified, Closed
+  photoUrl     String?
+  description  String?
+  assignedToId String?
+  assignedTo   User?     @relation(fields: [assignedToId], references: [id])
+  deadline     DateTime?
+  actionPlan   String?
+  createdAt    DateTime  @default(now())
+  resolvedAt   DateTime?
+}
+
+// Phase 3 & 10: Quotation, BOQ & Variation Engine
+model Quotation {
+  id           String   @id @default(uuid())
+  quoteNo      String   @unique
+  projectId    String?
+  project      Project? @relation(fields: [projectId], references: [id])
+  clientId     String?
+  client       Client?  @relation(fields: [clientId], references: [id])
+  leadId       String?
+  lead         Lead?    @relation(fields: [leadId], references: [id])
+  title        String
+  materialCost Float    @default(0)
+  labourCost   Float    @default(0)
+  overheads    Float    @default(0)
+  markupPct    Float    @default(15)
+  subtotal     Float    @default(0)
+  discount     Float    @default(0)
+  tax          Float    @default(0)
+  total        Float    @default(0)
+  targetMargin Float    @default(20)
+  status       String   @default("Draft") // Draft, Sent, Negotiating, Approved, Rejected
+  advancePaid  Float    @default(0)
+  createdAt    DateTime @default(now())
+
+  boqLines BoqLine[]
+}
+
+model BoqLine {
+  id            String     @id @default(uuid())
+  projectId     String?
+  project       Project?   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  quotationId   String?
+  quotation     Quotation? @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  item          String
+  category      String     // Civil, Carpentry, Electrical, Plumbing, HVAC, Finishing
+  specification String?
+  quantity      Float      @default(0)
+  unit          String
+  rate          Float      @default(0)
+  amount        Float      @default(0)
+  actualCost    Float      @default(0)
+  createdAt     DateTime   @default(now())
+}
+
+model VariationRequest {
+  id             String    @id @default(uuid())
+  variationNo    String    @unique
+  projectId      String
+  project        Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title          String
+  type           String    // Addition, Deletion, Material Change, Scope Expansion
+  reason         String?
+  costDifference Float     @default(0) // +/- impact
+  priceImpact    Float     @default(0) // Client price difference
+  status         String    @default("Draft") // Draft, Submitted, Client Approved, Client Rejected
+  approvedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  approvals ClientApproval[]
+}
+
+// Phase 11: Finance & P&L
+model FinanceEntry {
+  id          String   @id @default(uuid())
+  projectId   String?
+  project     Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  type        String   // Invoice, Client Payment, Material Cost, Labour Cost, Subcontractor Cost, Overhead
+  category    String?
+  referenceNo String?
+  amount      Float
+  paymentMode String?  // Bank Transfer, Cheque, UPI, Cash
+  entryDate   DateTime @default(now())
+  status      String   @default("Completed") // Pending, Completed, Cancelled
+  notes       String?
+  createdAt   DateTime @default(now())
+}
