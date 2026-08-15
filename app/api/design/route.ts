@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireAuth } from '@/lib/auth';
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const projectId = searchParams.get('projectId');
   try {
+    await requireAuth();
+
     const [designItems, moodboards] = await Promise.all([
       prisma.designItem.findMany({
         where: projectId ? { projectId } : undefined,
@@ -25,6 +28,8 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    await requireAuth();
+
     const body = await req.json();
 
     if (body.type === 'moodboard') {
@@ -73,6 +78,8 @@ export async function DELETE(req: Request) {
   const type = searchParams.get('type');
   if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
   try {
+    await requireAuth();
+
     if (type === 'moodboard') {
       await prisma.moodboardItem.deleteMany({ where: { moodboardId: id } });
       await prisma.clientApproval.deleteMany({ where: { moodboardId: id } });

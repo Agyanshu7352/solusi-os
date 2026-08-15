@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireAuth } from '@/lib/auth';
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const projectId = searchParams.get('projectId');
   try {
+    await requireAuth();
+
     const reports = await prisma.siteReport.findMany({
       where: projectId ? { projectId } : undefined,
       include: {
@@ -22,6 +25,8 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    await requireAuth();
+
     const body = await req.json();
     const report = await prisma.siteReport.create({
       data: {
@@ -59,6 +64,8 @@ export async function DELETE(req: Request) {
   const id = searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
   try {
+    await requireAuth();
+
     await prisma.sitePhoto.deleteMany({ where: { reportId: id } });
     await prisma.siteReport.delete({ where: { id } });
     return NextResponse.json({ success: true });

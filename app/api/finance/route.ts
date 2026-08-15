@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireAuth } from '@/lib/auth';
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const projectId = searchParams.get('projectId');
   try {
+    await requireAuth();
+
     const entries = await prisma.financeEntry.findMany({
       where: projectId ? { projectId } : undefined,
       include: { project: true },
@@ -51,6 +54,8 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    await requireAuth();
+
     const body = await req.json();
     const entry = await prisma.financeEntry.create({
       data: {
@@ -87,6 +92,8 @@ export async function DELETE(req: Request) {
   const id = searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
   try {
+    await requireAuth();
+
     await prisma.financeEntry.delete({ where: { id } });
     return NextResponse.json({ success: true });
   } catch (error: any) {

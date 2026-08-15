@@ -10,23 +10,35 @@ generator client {
 
 // User Profile / Staff / Roles
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  name      String
-  role      String   @default("admin") // owner, admin, pm, designer, supervisor, purchase, accounts, client
-  phone     String?
-  avatar    String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String
+  passwordHash String   @default("")
+  role         String   @default("admin") // owner, admin, pm, designer, supervisor, purchase, accounts, client
+  phone        String?
+  avatar       String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   // Relations
-  managedProjects   Project[]         @relation("ProjectManager")
-  supervisedProjects Project[]        @relation("Supervisor")
-  leads             Lead[]
-  siteReports       SiteReport[]
-  tasks             Task[]
-  issues            Issue[]
-  purchaseOrders    PurchaseOrder[]
+  sessions           Session[]
+  managedProjects    Project[]         @relation("ProjectManager")
+  supervisedProjects Project[]         @relation("Supervisor")
+  leads              Lead[]
+  siteReports        SiteReport[]
+  tasks              Task[]
+  issues             Issue[]
+  purchaseOrders     PurchaseOrder[]
+}
+
+// Server-managed authentication sessions
+model Session {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
 }
 
 // Phase 1 & Phase 2: Client & Lead / CRM

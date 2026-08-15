@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireAuth } from '@/lib/auth';
 
 export async function GET() {
   try {
+    await requireAuth();
+
     const [materials, purchaseOrders, inventoryTxns] = await Promise.all([
       prisma.material.findMany({ orderBy: { code: 'asc' } }),
       prisma.purchaseOrder.findMany({
@@ -22,6 +25,8 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    await requireAuth();
+
     const body = await req.json();
     if (body.type === 'material') {
       const code = `MAT-${body.category?.substring(0, 3).toUpperCase() || 'GEN'}-${Math.floor(100 + Math.random() * 900)}`;
@@ -72,6 +77,8 @@ export async function DELETE(req: Request) {
   const type = searchParams.get('type');
   if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
   try {
+    await requireAuth();
+
     if (type === 'po') {
       await prisma.purchaseOrderItem.deleteMany({ where: { poId: id } });
       await prisma.purchaseOrder.delete({ where: { id } });

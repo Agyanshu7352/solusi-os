@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireAuth } from '@/lib/auth';
 
 export async function POST(req: Request) {
   try {
+    await requireAuth();
+
     const body = await req.json();
     const milestone = await prisma.milestone.create({
       data: {
@@ -26,6 +29,8 @@ export async function POST(req: Request) {
 
 export async function PATCH(req: Request) {
   try {
+    await requireAuth();
+
     const body = await req.json();
     const { id, status, progress, actualFinish, notes, name, phase } = body;
     const updated = await prisma.milestone.update({
@@ -60,6 +65,8 @@ export async function PATCH(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
+    await requireAuth();
+
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
     if (!id) return NextResponse.json({ error: 'Missing milestone ID' }, { status: 400 });

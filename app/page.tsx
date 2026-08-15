@@ -28,7 +28,7 @@ import {
   Sliders,
   LogOut
 } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+
 
 /* ==========================================================================
    NAVIGATION CONFIGURATION (Clean Product Modules)
@@ -184,31 +184,28 @@ export default function App() {
     return alerts;
   }, [approvals, issues, variations]);
 
-  // Read current user profile from localStorage or redirect to /login
+  // Validate session via server-side cookie and load current user
   useEffect(() => {
-    const saved = typeof window !== 'undefined' ? localStorage.getItem('solusi_user') : null;
-    if (saved) {
-      try {
-        const u = JSON.parse(saved);
-        if (u && u.name) {
-          setCurrentUser(u);
+    fetch('/api/auth/me')
+      .then(res => {
+        if (!res.ok) throw new Error('Not authenticated');
+        return res.json();
+      })
+      .then(data => {
+        if (data.user && data.user.name) {
+          setCurrentUser(data.user);
         } else {
           window.location.replace('/login');
         }
-      } catch (e) {
+      })
+      .catch(() => {
         window.location.replace('/login');
-      }
-    } else {
-      window.location.replace('/login');
-    }
+      });
   }, []);
 
   const handleLogout = async () => {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('solusi_user');
-    }
     try {
-      await supabase.auth.signOut();
+      await fetch('/api/auth/logout', { method: 'POST' });
     } catch (e) {}
     window.location.replace('/login');
   };

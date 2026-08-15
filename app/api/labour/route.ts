@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireAuth } from '@/lib/auth';
 
 export async function GET() {
   try {
+    await requireAuth();
+
     const [workers, assignments] = await Promise.all([
       prisma.tradeWorker.findMany({
         include: { assignments: { include: { project: true } } },
@@ -21,6 +24,8 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    await requireAuth();
+
     const body = await req.json();
     if (body.type === 'worker') {
       const worker = await prisma.tradeWorker.create({
@@ -57,6 +62,8 @@ export async function DELETE(req: Request) {
   const type = searchParams.get('type');
   if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
   try {
+    await requireAuth();
+
     if (type === 'worker') {
       await prisma.labourAssignment.deleteMany({ where: { workerId: id } });
       await prisma.tradeWorker.delete({ where: { id } });

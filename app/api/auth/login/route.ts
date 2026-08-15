@@ -1,78 +1,84 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { verifyPassword, createSession } from '@/lib/auth';
 
 export async function POST(req: Request) {
   try {
-    const { email, password } = await req.json();
+    const body = await req.json();
+    const { email, password } = body;
 
+    // Validate input
     if (!email || !password) {
-      return NextResponse.json({ error: 'Email and password are required.' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Email and password are required.' },
+        { status: 400 }
+      );
+    }
+
+    if (typeof email !== 'string' || typeof password !== 'string') {
+      return NextResponse.json(
+        { error: 'Invalid input format.' },
+        { status: 400 }
+      );
     }
 
     if (password.length < 6) {
-      return NextResponse.json({ error: 'Password must be at least 6 characters.' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Password must be at least 6 characters.' },
+        { status: 400 }
+      );
     }
 
     const emailLower = email.toLowerCase().trim();
 
-    // 1. Check Prisma database for seeded / registered user
-    let dbUser = null;
-    try {
-      dbUser = await prisma.user.findUnique({
-        where: { email: emailLower }
-      });
-    } catch (dbErr) {
-      console.warn('Prisma lookup warning during auth:', dbErr);
+    // Look up user by email
+    const user = await prisma.user.findUnique({
+      where: { email: emailLower },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        passwordHash: true,
+        role: true,
+        phone: true,
+        avatar: true,
+      },
+    });
+
+    // Generic error to prevent user enumeration
+    const INVALID_CREDENTIALS = 'Invalid email or password.';
+
+    if (!user) {
+      return NextResponse.json({ error: INVALID_CREDENTIALS }, { status: 401 });
     }
 
-    if (dbUser) {
-      const avatar = dbUser.avatar || dbUser.name.substring(0, 2).toUpperCase();
-      return NextResponse.json({
-        success: true,
-        user: {
-          id: dbUser.id,
-          name: dbUser.name,
-          email: dbUser.email,
-          role: dbUser.role === 'owner' ? 'Owner & Systems Admin' : dbUser.role.toUpperCase(),
-          phone: dbUser.phone,
-          avatar
-        }
-      });
+    // Verify password hash
+    if (!user.passwordHash || !verifyPassword(password, user.passwordHash)) {
+      return NextResponse.json({ error: INVALID_CREDENTIALS }, { status: 401 });
     }
 
-    // 2. Allow system admins & workspace domains
-    const allowedEmails = ['shivay7352@gmail.com', 'shubham@solusidesign.com', 'admin@solusidesign.com'];
-    const isAuthorizedDomain =
-      allowedEmails.includes(emailLower) ||
-      emailLower.endsWith('@solusidesign.com') ||
-      emailLower.endsWith('@solusi.com') ||
-      emailLower.endsWith('@solusios.com');
+    // Create server-side session and set HttpOnly cookie
+    await createSession(user.id);
 
-    if (isAuthorizedDomain) {
-      const namePart = emailLower.split('@')[0];
-      const formattedName =
-        emailLower === 'shivay7352@gmail.com'
-          ? 'Shivay'
-          : namePart.charAt(0).toUpperCase() + namePart.slice(1);
+    // Return safe user data (no passwordHash, no internal IDs)
+    const avatar = user.avatar || user.name.substring(0, 2).toUpperCase();
 
-      return NextResponse.json({
-        success: true,
-        user: {
-          id: 'admin-workspace-id',
-          name: formattedName,
-          email: emailLower,
-          role: emailLower === 'shivay7352@gmail.com' ? 'Owner & Systems Admin' : 'Commercial Operations',
-          avatar: namePart.substring(0, 2).toUpperCase()
-        }
-      });
-    }
-
+    return NextResponse.json({
+      success: true,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        phone: user.phone,
+        avatar,
+      },
+    });
+  } catch (error: unknown) {
+    console.error('Login error:', error instanceof Error ? error.message : error);
     return NextResponse.json(
-      { error: 'Access denied. Unrecognized email account or invalid credentials.' },
-      { status: 401 }
+      { error: 'An internal error occurred. Please try again.' },
+      { status: 500 }
     );
-  } catch (error: any) {
-    console.error('Error during login API request:', error);
-    return NextResponse.json({ error: error.message || 'Authentication server error.' }, { status: 500 });
   }
 }

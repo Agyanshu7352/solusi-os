@@ -2,7 +2,6 @@
 
 import { FormEvent, useEffect, useState } from 'react';
 import { ArrowRight, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -12,23 +11,19 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [checkingSession, setCheckingSession] = useState(true);
 
-  // Backward/Forward Routing Guard: If already authenticated, redirect immediately to dashboard using replace()
+  // If already authenticated (cookie exists & is valid), redirect to dashboard
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('solusi_user');
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          if (parsed && parsed.name) {
-            window.location.replace('/');
-            return;
-          }
-        } catch (e) {
-          localStorage.removeItem('solusi_user');
+    fetch('/api/auth/me')
+      .then(res => {
+        if (res.ok) {
+          window.location.replace('/');
+        } else {
+          setCheckingSession(false);
         }
-      }
-    }
-    setCheckingSession(false);
+      })
+      .catch(() => {
+        setCheckingSession(false);
+      });
   }, []);
 
   async function submit(e: FormEvent) {
@@ -54,42 +49,23 @@ export default function LoginPage() {
     setError('');
 
     try {
-      const isPlaceholder = !process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL.includes('placeholder');
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: trimmedEmail, password }),
+      });
 
-      let userObj = null;
+      const data = await res.json();
 
-      if (!isPlaceholder) {
-        const { data, error: authError } = await supabase.auth.signInWithPassword({ email: trimmedEmail, password });
-        if (authError || !data.user) {
-          throw new Error(authError?.message || 'Invalid email or password. Access denied.');
-        }
-
-        userObj = {
-          name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'User',
-          role: data.user.user_metadata?.role || 'Commercial Operations',
-          email: data.user.email,
-          avatar: (data.user.email || 'US').substring(0, 2).toUpperCase()
-        };
-      } else {
-        const res = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: trimmedEmail, password })
-        });
-
-        const data = await res.json();
-
-        if (!res.ok || !data.success) {
-          throw new Error(data.error || 'Invalid email or password. Access denied.');
-        }
-
-        userObj = data.user;
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Invalid email or password.');
       }
 
-      localStorage.setItem('solusi_user', JSON.stringify(userObj));
+      // Session cookie is set by the server — redirect to dashboard
       window.location.replace('/');
-    } catch (err: any) {
-      setError(err.message || 'Login failed. Please check your credentials.');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Login failed. Please check your credentials.';
+      setError(message);
     } finally {
       setBusy(false);
     }
@@ -117,7 +93,7 @@ export default function LoginPage() {
         <div className="authIntro">
           <span className="authIcon"><LockKeyhole size={18} /></span>
           <h1>Sign in to Solusi OS</h1>
-          <p>Run commercial interior design, BOQs, site control & finance in one workspace.</p>
+          <p>Run commercial interior design, BOQs, site control &amp; finance in one workspace.</p>
         </div>
 
         <form onSubmit={submit} className="authForm">
@@ -166,7 +142,7 @@ export default function LoginPage() {
 
         <div className="authNote">
           <ShieldCheck size={14} />
-          <span>Private commercial workspace. Access is authenticated & role-protected.</span>
+          <span>Private commercial workspace. Access is authenticated &amp; role-protected.</span>
         </div>
       </div>
     </main>

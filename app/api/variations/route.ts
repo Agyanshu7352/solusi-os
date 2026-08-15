@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireAuth } from '@/lib/auth';
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const projectId = searchParams.get('projectId');
   try {
+    await requireAuth();
+
     const variations = await prisma.variationRequest.findMany({
       where: projectId ? { projectId } : undefined,
       include: { project: true, approvals: true },
@@ -18,6 +21,8 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    await requireAuth();
+
     const body = await req.json();
     const variationNo = `VAR-2026-${Math.floor(100 + Math.random() * 900)}`;
 
@@ -53,6 +58,8 @@ export async function POST(req: Request) {
 
 export async function PATCH(req: Request) {
   try {
+    await requireAuth();
+
     const body = await req.json();
     const { id, status } = body;
     const updated = await prisma.variationRequest.update({
@@ -85,6 +92,8 @@ export async function DELETE(req: Request) {
   const id = searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
   try {
+    await requireAuth();
+
     await prisma.clientApproval.deleteMany({ where: { variationId: id } });
     await prisma.variationRequest.delete({ where: { id } });
     return NextResponse.json({ success: true });

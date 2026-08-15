@@ -1,11 +1,20 @@
 import { PrismaClient } from '@prisma/client';
+import { randomBytes, scryptSync } from 'crypto';
 
 const prisma = new PrismaClient();
 
-async function main() {
-  console.log('Seeding Solusi OS database...');
+// Must match lib/auth.ts hashing parameters
+function hashPassword(password: string): string {
+  const salt = randomBytes(32);
+  const hash = scryptSync(password, salt, 64, { N: 16384, r: 8, p: 1 });
+  return `${salt.toString('hex')}:${hash.toString('hex')}`;
+}
 
-  // Clean existing tables
+// Default password for all seeded users (development only)
+const DEFAULT_PASSWORD = 'solusi2026';
+
+async function main() {
+  console.log('Seeding Solusi OS database...');  // Clean existing tables
   await prisma.financeEntry.deleteMany();
   await prisma.clientApproval.deleteMany();
   await prisma.variationRequest.deleteMany();
@@ -28,13 +37,25 @@ async function main() {
   await prisma.project.deleteMany();
   await prisma.lead.deleteMany();
   await prisma.client.deleteMany();
+  await prisma.session.deleteMany();
   await prisma.user.deleteMany();
 
   // 1. Users / Team Members
+  const adminUser = await prisma.user.create({
+    data: {
+      email: 'shivay7352@gmail.com',
+      name: 'Shivay (Systems Admin)',
+      passwordHash: hashPassword(DEFAULT_PASSWORD),
+      role: 'owner',
+      phone: '+91 98765 00000'
+    }
+  });
+
   const owner = await prisma.user.create({
     data: {
       email: 'shubham@solusidesign.com',
       name: 'Shubham Chaudhary',
+      passwordHash: hashPassword(DEFAULT_PASSWORD),
       role: 'owner',
       phone: '+91 98765 43210'
     }
@@ -44,6 +65,7 @@ async function main() {
     data: {
       email: 'vikram.pm@solusidesign.com',
       name: 'Vikram Malhotra',
+      passwordHash: hashPassword(DEFAULT_PASSWORD),
       role: 'pm',
       phone: '+91 98111 22334'
     }
@@ -53,6 +75,7 @@ async function main() {
     data: {
       email: 'ananya.design@solusidesign.com',
       name: 'Ananya Sharma',
+      passwordHash: hashPassword(DEFAULT_PASSWORD),
       role: 'designer',
       phone: '+91 98222 33445'
     }
@@ -62,6 +85,7 @@ async function main() {
     data: {
       email: 'rajesh.site@solusidesign.com',
       name: 'Rajesh Kumar',
+      passwordHash: hashPassword(DEFAULT_PASSWORD),
       role: 'supervisor',
       phone: '+91 98333 44556'
     }
@@ -71,6 +95,7 @@ async function main() {
     data: {
       email: 'client@techcorp.com',
       name: 'Aarav Mehta (TechCorp)',
+      passwordHash: hashPassword(DEFAULT_PASSWORD),
       role: 'client',
       phone: '+91 99000 11223'
     }

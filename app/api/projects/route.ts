@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireAuth } from '@/lib/auth';
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const id = searchParams.get('id');
 
   try {
+    await requireAuth();
+
     if (id) {
       const project = await prisma.project.findUnique({
         where: { id },
@@ -54,6 +57,8 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    await requireAuth();
+
     const body = await req.json();
     const code = `PRJ-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
 
@@ -104,6 +109,8 @@ export async function POST(req: Request) {
 
 export async function PATCH(req: Request) {
   try {
+    await requireAuth();
+
     const body = await req.json();
     const { id, progress, status, contractValue, approvedBudget, actualCost } = body;
     const updated = await prisma.project.update({
@@ -127,6 +134,8 @@ export async function DELETE(req: Request) {
   const id = searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
   try {
+    await requireAuth();
+
     // Delete cascading child elements
     await prisma.milestone.deleteMany({ where: { projectId: id } });
     await prisma.task.deleteMany({ where: { projectId: id } });

@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireAuth } from '@/lib/auth';
 
 export async function GET() {
   try {
+    await requireAuth();
+
     const clients = await prisma.client.findMany({
       include: {
         projects: true,
@@ -19,6 +22,8 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    await requireAuth();
+
     const body = await req.json();
     const client = await prisma.client.create({
       data: {
@@ -43,6 +48,8 @@ export async function DELETE(req: Request) {
   const id = searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
   try {
+    await requireAuth();
+
     await prisma.client.delete({ where: { id } });
     return NextResponse.json({ success: true });
   } catch (error: any) {

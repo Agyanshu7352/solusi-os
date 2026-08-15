@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireAuth } from '@/lib/auth';
 
 export async function GET() {
   try {
+    await requireAuth();
+
     const leads = await prisma.lead.findMany({
       include: {
         client: true,
@@ -20,6 +23,8 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    await requireAuth();
+
     const body = await req.json();
     const lead = await prisma.lead.create({
       data: {
@@ -44,6 +49,8 @@ export async function POST(req: Request) {
 
 export async function PATCH(req: Request) {
   try {
+    await requireAuth();
+
     const body = await req.json();
     const { id, stage, notes } = body;
     const updated = await prisma.lead.update({
@@ -64,6 +71,8 @@ export async function DELETE(req: Request) {
   const id = searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
   try {
+    await requireAuth();
+
     await prisma.lead.delete({ where: { id } });
     return NextResponse.json({ success: true });
   } catch (error: any) {
